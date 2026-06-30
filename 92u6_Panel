@@ -63,8 +63,11 @@ local CONFIG = {
 		LogoImage = "rbxassetid://109163347080109",
 	},
 	Login = {
-		Username = "Smokeofcl",
-		Token = "92u6panel",
+		Credentials = {
+			{ Username = "Smokeofcl", Token = "92u6panel" },
+			{ Username = "gica", Token = "92u6panel" },
+			-- { Username = "OutroUsuario", Token = "outro-token" },
+		},
 		Title = "Login",
 		Subtitle = "acesso ao painel",
 		DiscordInvite = "https://discord.gg/vjRRpXvqxQ",
@@ -1475,7 +1478,7 @@ local function createLoginBox(y, text, placeholder)
 end
 
 createLoginLabel("Usuário", 0)
-local usernameBox = createLoginBox(16, CONFIG.Login.Username, "Usuário")
+local usernameBox = createLoginBox(16, "", "Usuário")
 
 createLoginLabel("Token", 58)
 local tokenBox = createLoginBox(74, "", "Token")
@@ -1732,6 +1735,9 @@ local function showLoginCentered()
 	setInterfaceEnabled(true)
 	Panel.Visible = false
 	LoginFrame.Visible = true
+	usernameBox.Text = ""
+	tokenBox.Text = ""
+	setLoginStatus("digite o token para liberar o painel", false)
 	centerLogin()
 	task.defer(centerLogin)
 	task.delay(0.05, centerLogin)
@@ -1744,10 +1750,28 @@ function setLoginStatus(text, isError)
 	refreshLoginStatus()
 end
 
+local function trimCredentialText(text)
+	return tostring(text or ""):match("^%s*(.-)%s*$")
+end
+
+local function credentialIsValid(username, token)
+	username = trimCredentialText(username)
+	token = trimCredentialText(token)
+
+	for _, credential in ipairs(CONFIG.Login.Credentials or {}) do
+		local validUsername = trimCredentialText(credential.Username)
+		local validToken = trimCredentialText(credential.Token)
+
+		if username == validUsername and token == validToken then
+			return true
+		end
+	end
+
+	return false
+end
+
 local function tryLogin()
-	local userOk = usernameBox.Text == CONFIG.Login.Username
-	local tokenOk = tokenBox.Text == CONFIG.Login.Token
-	if userOk and tokenOk then
+	if credentialIsValid(usernameBox.Text, tokenBox.Text) then
 		AppState.isLoggedIn = true
 		LoginFrame.Visible = false
 		setLoginStatus("acesso liberado", false)
@@ -2778,12 +2802,11 @@ ViewMeta = {
 				pingInfo.value.Text = pingMs and (tostring(pingMs) .. " ms") or "N/A"
 				fpsInfo.value.Text = currentFps > 0 and tostring(currentFps) or "--"
 
-				if game.PrivateServerId ~= "" then
-					serverTypeInfo.value.Text = "Privado"
-				elseif game.JobId == "" then
+				-- Não use game.PrivateServerId no cliente: isso gera warning infinito no Developer Console.
+				if game.JobId == "" then
 					serverTypeInfo.value.Text = "Studio"
 				else
-					serverTypeInfo.value.Text = "Público"
+					serverTypeInfo.value.Text = "Sessão ativa"
 				end
 
 				placeInfo.value.Text = tostring(game.PlaceId)
