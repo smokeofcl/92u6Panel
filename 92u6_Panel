@@ -3393,21 +3393,20 @@ local function obfuscate(source)
 
 	local arrayText = makeArrayText(encoded, 50)
 
-	local result = [[
-return(function(...)
-local ]] .. vData .. [[=]] .. arrayText .. [[
-local ]] .. vKey .. [[=]] .. key .. [[
-local ]] .. vOut .. [[={}
-for ]] .. vI .. [[=1,#]] .. vData .. [[ do
-local ]] .. vByte .. [[=bit32.bxor(]] .. vData .. "[[" .. vI .. [[],]] .. vKey .. [[)
-]] .. vOut .. [[#]] .. vOut .. [[+1]=string.char(]] .. vByte .. [[)
-end
-local ]] .. vLoad .. [[=loadstring or load
-assert(]] .. vLoad .. [[,"loadstring/load indisponivel")
-local ]] .. vFunc .. [[=assert(]] .. vLoad .. [[(table.concat(]] .. vOut .. [[)))
-return ]] .. vFunc .. [[(...)
-end)(...)
-]]
+	local result = ""
+	result ..= "return(function(...)\n"
+	result ..= "local " .. vData .. "=" .. arrayText .. "\n"
+	result ..= "local " .. vKey .. "=" .. key .. "\n"
+	result ..= "local " .. vOut .. "={}\n"
+	result ..= "for " .. vI .. "=1,#" .. vData .. " do\n"
+	result ..= "local " .. vByte .. "=bit32.bxor(" .. vData .. "[" .. vI .. "]," .. vKey .. ")\n"
+	result ..= vOut .. "[#" .. vOut .. "+1]=string.char(" .. vByte .. ")\n"
+	result ..= "end\n"
+	result ..= "local " .. vLoad .. "=(loadstring or load)\n"
+	result ..= "assert(" .. vLoad .. ",\"loadstring/load indisponivel\")\n"
+	result ..= "local " .. vFunc .. "=assert(" .. vLoad .. "(table.concat(" .. vOut .. ")))\n"
+	result ..= "return " .. vFunc .. "(...)\n"
+	result ..= "end)(...)\n"
 
 	return result
 end
