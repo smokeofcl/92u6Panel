@@ -1,3 +1,8 @@
+--// 92u6 Basic Luau Obfuscator
+--// Cola seu código dentro de SOURCE e executa.
+--// O resultado vai aparecer no Output.
+
+local SOURCE = [==[
 -- ============================================================
 -- 1. SERVIÇOS E CONSTANTES
 -- ============================================================
@@ -73,7 +78,7 @@ local CONFIG = {
 	},
 	Loading = {
 		Title = "92u6 Panel",
-		Message = "Esta sendo carregado",
+		Message = "Está sendo carregado",
 		Image = "rbxassetid://109163347080109",
 		MinDuration = 4.5,
 		StepDelay = 0.45,
@@ -1074,18 +1079,16 @@ local LoadingNotification = create("Frame", {
 })
 bindTheme(LoadingNotification, "BackgroundColor3", "BgPanel")
 corner(LoadingNotification, 10)
-local loadingStroke = stroke(LoadingNotification, Theme.Line, 1)
-bindTheme(loadingStroke, "Color", "Line")
 
 local loadingIconBg = create("Frame", {
 	Size = UDim2.fromOffset(42, 42),
 	Position = UDim2.fromOffset(12, 14),
+	BackgroundTransparency = 1,
 	BorderSizePixel = 0,
 	ClipsDescendants = true,
 	ZIndex = 41,
 	Parent = LoadingNotification,
 })
-bindTheme(loadingIconBg, "BackgroundColor3", "AccentWash")
 corner(loadingIconBg, 10)
 
 local loadingImage = create("ImageLabel", {
@@ -1143,11 +1146,11 @@ bindTheme(loadingMessage, "TextColor3", "TextMid")
 local loadingTrack = create("Frame", {
 	Size = UDim2.new(1, -90, 0, 4),
 	Position = UDim2.fromOffset(66, 61),
+	BackgroundTransparency = 1,
 	BorderSizePixel = 0,
 	ZIndex = 41,
 	Parent = LoadingNotification,
 })
-bindTheme(loadingTrack, "BackgroundColor3", "BgSwitchOff")
 corner(loadingTrack, 2)
 
 local loadingProgress = create("Frame", {
@@ -1476,8 +1479,8 @@ local function createLoginBox(y, text, placeholder)
 	return box
 end
 
-createLoginLabel("Username", 0)
-local usernameBox = createLoginBox(16, CONFIG.Login.Username, "Username")
+createLoginLabel("Usuário", 0)
+local usernameBox = createLoginBox(16, CONFIG.Login.Username, "Usuário")
 
 createLoginLabel("Token", 58)
 local tokenBox = createLoginBox(74, "", "Token")
@@ -1755,7 +1758,7 @@ local function tryLogin()
 		setLoginStatus("acesso liberado", false)
 		showPanelCentered()
 	else
-		setLoginStatus("username ou token invalido", true)
+		setLoginStatus("usuário ou token inválido", true)
 		tween(LoginFrame, { Position = UDim2.new(0.5, -6, 0.5, 0) }, 0.05)
 		task.delay(0.06, centerLogin)
 	end
@@ -2470,7 +2473,7 @@ local function createRow(opts)
 			if opts.onClick then
 				safeCall("Click." .. tostring(opts.title), opts.onClick)
 			else
-				showNotice("Esse submenu ainda nao foi configurado.")
+				showNotice("Esse submenu ainda não foi configurado.")
 			end
 		end)
 
@@ -2748,25 +2751,25 @@ end
 ViewMeta = {
 	MainHub = {
 		title = "Main",
-		desc = "Informacoes importantes do servidor.",
+		desc = "Informações importantes do servidor.",
 		render = function()
 			sectionLabel("Servidor", 1)
 			local playersInfo = createInfoRow({ order = 2, title = "Jogadores", sub = "pessoas no servidor", value = "--" })
-			local pingInfo = createInfoRow({ order = 3, title = "Ping", sub = "latencia aproximada", value = "-- ms" })
+			local pingInfo = createInfoRow({ order = 3, title = "Ping", sub = "latência aproximada", value = "-- ms" })
 			local fpsInfo = createInfoRow({ order = 4, title = "FPS", sub = "desempenho do cliente", value = "--" })
-			local serverTypeInfo = createInfoRow({ order = 5, title = "Tipo de servidor", sub = "sessao atual", value = "--" })
+			local serverTypeInfo = createInfoRow({ order = 5, title = "Tipo de servidor", sub = "sessão atual", value = "--" })
 
 			sectionLabel("Jogo", 6)
 			local placeInfo = createInfoRow({ order = 7, title = "Place ID", sub = "identificador do mapa", value = tostring(game.PlaceId), valueWidth = 140 })
-			local versionInfo = createInfoRow({ order = 8, title = "Versao do place", sub = "publicacao carregada", value = tostring(game.PlaceVersion or 0) })
+			local versionInfo = createInfoRow({ order = 8, title = "Versão do place", sub = "publicação carregada", value = tostring(game.PlaceVersion or 0) })
 			local jobInfo = createInfoRow({ order = 9, title = "Job ID", sub = "id curto do servidor", value = "--", valueWidth = 140 })
 			local sessionInfo = createInfoRow({ order = 10, title = "Tempo no painel", sub = "desde que o script iniciou", value = "00:00" })
 
 			sectionLabel("Jogador", 11)
-			local userInfo = createInfoRow({ order = 12, title = "Usuario", sub = "nome da conta", value = "@" .. LocalPlayer.Name, valueWidth = 140 })
+			local userInfo = createInfoRow({ order = 12, title = "Usuário", sub = "nome da conta", value = "@" .. LocalPlayer.Name, valueWidth = 140 })
 			local userIdInfo = createInfoRow({ order = 13, title = "User ID", sub = "identificador da conta", value = tostring(LocalPlayer.UserId), valueWidth = 140 })
 			local teamInfo = createInfoRow({ order = 14, title = "Time", sub = "equipe atual", value = "--" })
-			local accountInfo = createInfoRow({ order = 15, title = "Idade da conta", sub = "dias desde a criacao", value = tostring(LocalPlayer.AccountAge) .. " dias" })
+			local accountInfo = createInfoRow({ order = 15, title = "Idade da conta", sub = "dias desde a criação", value = tostring(LocalPlayer.AccountAge) .. " dias" })
 
 			local frameCount = 0
 			local lastFpsClock = os.clock()
@@ -2785,7 +2788,7 @@ ViewMeta = {
 				elseif game.JobId == "" then
 					serverTypeInfo.value.Text = "Studio"
 				else
-					serverTypeInfo.value.Text = "Publico"
+					serverTypeInfo.value.Text = "Público"
 				end
 
 				placeInfo.value.Text = tostring(game.PlaceId)
@@ -2843,7 +2846,7 @@ ViewMeta = {
 				order = 3,
 				icon = "⬤",
 				title = "Tracers",
-				sub = "linha ate cada inimigo",
+				sub = "linha até cada inimigo",
 				kind = "toggle",
 				default = false,
 				onToggle = function(on) Cheat.setTracers(on) end,
@@ -2864,8 +2867,8 @@ ViewMeta = {
 				id = "circle",
 				order = 6,
 				icon = "◎",
-				title = "Circulo FOV",
-				sub = "mostra o circulo de mira",
+				title = "Círculo FOV",
+				sub = "mostra o círculo de mira",
 				kind = "toggle",
 				default = false,
 				onToggle = function(on)
@@ -2878,7 +2881,7 @@ ViewMeta = {
 			createSliderRow({
 				id = "circleRadius",
 				order = 7,
-				title = "Raio do Circulo",
+				title = "Raio do Círculo",
 				sub = "tamanho do FOV",
 				min = 20,
 				max = 300,
@@ -3059,7 +3062,7 @@ ViewMeta = {
 	},
 	Settings = {
 		title = "Settings",
-		desc = "Preferencias gerais do painel.",
+		desc = "Preferências gerais do painel.",
 		render = function()
 			sectionLabel("Tema", 1)
 			local themeRow = create("Frame", {
@@ -3078,7 +3081,7 @@ ViewMeta = {
 				Size = UDim2.new(1, -24, 0, 14),
 				Position = UDim2.fromOffset(12, 10),
 				BackgroundTransparency = 1,
-				Text = "Aparencia",
+				Text = "Aparência",
 				Font = FONT_BODY_BOLD,
 				TextSize = 12.5,
 				TextXAlignment = Enum.TextXAlignment.Left,
@@ -3160,7 +3163,7 @@ ViewMeta = {
 			createRow({
 				order = 4,
 				icon = "i",
-				title = "Versao da interface",
+				title = "Versão da interface",
 				sub = "build atual",
 				kind = "chip",
 				chipText = "v2.5.3",
@@ -3329,3 +3332,89 @@ safeCall("Viewport.Bind", bindViewportWatcher)
 safeCall("Init.OpenView", openView, "MainHub")
 safeCall("Init.Theme", applyTheme, AppState.themeName, false)
 safeCall("Init.Loading", showLoadingNotification, showLoginCentered)
+]==]
+
+local rng = Random.new()
+
+local function randomName(size)
+	size = size or rng:NextInteger(6, 12)
+
+	local letters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+	local result = "_"
+
+	for i = 1, size do
+		local index = rng:NextInteger(1, #letters)
+		result ..= string.sub(letters, index, index)
+	end
+
+	return result
+end
+
+local function encodeSource(source)
+	local key = rng:NextInteger(1, 255)
+	local encoded = {}
+
+	for i = 1, #source do
+		local byte = string.byte(source, i)
+		encoded[i] = bit32.bxor(byte, key)
+	end
+
+	return encoded, key
+end
+
+local function makeArrayText(array, perLine)
+	perLine = perLine or 40
+
+	local lines = {}
+	local current = {}
+
+	for i, value in ipairs(array) do
+		table.insert(current, tostring(value))
+
+		if #current >= perLine then
+			table.insert(lines, table.concat(current, ","))
+			current = {}
+		end
+	end
+
+	if #current > 0 then
+		table.insert(lines, table.concat(current, ","))
+	end
+
+	return "{\n" .. table.concat(lines, ",\n") .. "\n}"
+end
+
+local function obfuscate(source)
+	local encoded, key = encodeSource(source)
+
+	local vData = randomName()
+	local vKey = randomName()
+	local vOut = randomName()
+	local vI = randomName()
+	local vByte = randomName()
+	local vLoad = randomName()
+	local vFunc = randomName()
+
+	local arrayText = makeArrayText(encoded, 50)
+
+	local result = [[
+return(function(...)
+local ]] .. vData .. [[=]] .. arrayText .. [[
+local ]] .. vKey .. [[=]] .. key .. [[
+local ]] .. vOut .. [[={}
+for ]] .. vI .. [[=1,#]] .. vData .. [[ do
+local ]] .. vByte .. [[=bit32.bxor(]] .. vData .. "[[" .. vI .. [[],]] .. vKey .. [[)
+]] .. vOut .. [[#]] .. vOut .. [[+1]=string.char(]] .. vByte .. [[)
+end
+local ]] .. vLoad .. [[=loadstring or load
+assert(]] .. vLoad .. [[,"loadstring/load indisponivel")
+local ]] .. vFunc .. [[=assert(]] .. vLoad .. [[(table.concat(]] .. vOut .. [[)))
+return ]] .. vFunc .. [[(...)
+end)(...)
+]]
+
+	return result
+end
+
+local output = obfuscate(SOURCE)
+print(output)
