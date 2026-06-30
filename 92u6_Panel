@@ -2778,10 +2778,12 @@ ViewMeta = {
 				pingInfo.value.Text = pingMs and (tostring(pingMs) .. " ms") or "N/A"
 				fpsInfo.value.Text = currentFps > 0 and tostring(currentFps) or "--"
 
-				if game.JobId == "" then
+				if game.PrivateServerId ~= "" then
+					serverTypeInfo.value.Text = "Privado"
+				elseif game.JobId == "" then
 					serverTypeInfo.value.Text = "Studio"
 				else
-					serverTypeInfo.value.Text = "Sessão ativa"
+					serverTypeInfo.value.Text = "Público"
 				end
 
 				placeInfo.value.Text = tostring(game.PlaceId)
