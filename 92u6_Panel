@@ -1,7 +1,3 @@
---// 92u6 Basic Luau Obfuscator
---// Cola seu código dentro de SOURCE e executa.
---// O resultado vai aparecer no Output.
-
 local SOURCE = [==[
 -- ============================================================
 -- 1. SERVIÇOS E CONSTANTES
