@@ -1,0 +1,3331 @@
+-- ============================================================
+-- 1. SERVIÇOS E CONSTANTES
+-- ============================================================
+local Players = game:GetService("Players")
+local ContentProvider = game:GetService("ContentProvider")
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+local StarterGui = game:GetService("StarterGui")
+local LogService = game:GetService("LogService")
+local Workspace = game:GetService("Workspace")
+local RunService = game:GetService("RunService")
+
+local LocalPlayer = Players.LocalPlayer
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+local Camera = Workspace.CurrentCamera
+local PANEL_STARTED_AT = os.clock()
+
+local FONT_BODY = Enum.Font.Gotham
+local FONT_BODY_MED = Enum.Font.GothamMedium
+local FONT_BODY_BOLD = Enum.Font.GothamBold
+local FONT_MONO = Enum.Font.Code
+local FONT_OPTIONS = {
+	Gotham = {
+		Label = "Gotham",
+		Body = Enum.Font.Gotham,
+		Medium = Enum.Font.GothamMedium,
+		Bold = Enum.Font.GothamBold,
+		Mono = Enum.Font.Code,
+	},
+	Source = {
+		Label = "Source",
+		Body = Enum.Font.SourceSans,
+		Medium = Enum.Font.SourceSansSemibold,
+		Bold = Enum.Font.SourceSansBold,
+		Mono = Enum.Font.Code,
+	},
+	Code = {
+		Label = "Code",
+		Body = Enum.Font.Code,
+		Medium = Enum.Font.Code,
+		Bold = Enum.Font.Code,
+		Mono = Enum.Font.Code,
+	},
+}
+local FONT_ORDER = { "Gotham", "Source", "Code" }
+
+local PANEL_SIZE = Vector2.new(620, 440)
+local SCREEN_PADDING = 16
+local SIDEBAR_WIDTH = 168
+local PANEL_GLASS_TRANSPARENCY = 0
+local SIDEBAR_GLASS_TRANSPARENCY = 0
+local SURFACE_GLASS_TRANSPARENCY = 0
+local UI_TWEEN_TIME = 0.08
+
+-- ============================================================
+-- 2. CONFIGURAÇÕES GERAIS
+-- ============================================================
+local CONFIG = {
+	Brand = {
+		Title = "92u6 Panel",
+		Subtitle = "",
+		LogoText = "9",
+		LogoImage = "rbxassetid://109163347080109",
+	},
+	Login = {
+		Username = "Smokeofcl",
+		Token = "92u6panel",
+		Title = "Login",
+		Subtitle = "acesso ao painel",
+		DiscordInvite = "https://discord.gg/vjRRpXvqxQ",
+		DiscordIcon = "rbxassetid://86674984085035", -- coloque rbxassetid:// da logo do Discord aqui
+		DiscordIconTint = true,
+	},
+	Loading = {
+		Title = "92u6 Panel",
+		Message = "Esta sendo carregado",
+		Image = "rbxassetid://109163347080109",
+		MinDuration = 4.5,
+		StepDelay = 0.45,
+		MaxQueueWait = 5,
+	},
+	Navigation = {
+		MainHub = { Image = "rbxassetid://120379033599785" }, -- coloque rbxassetid:// aqui
+		Visuals = { Image = "rbxassetid://126315470586727" },
+		Combat = { Image = "rbxassetid://108496315566957" },
+		Console = { Image = "rbxassetid://99757278101469" },
+	},
+	Keybinds = {
+		aimbot = Enum.KeyCode.E,
+		tracers = Enum.KeyCode.T,
+		hitbox = Enum.KeyCode.H,
+		circle = Enum.KeyCode.F,
+		highlight = Enum.KeyCode.G,
+		teamCheckAimbot = Enum.KeyCode.Y,
+	},
+}
+
+CONFIG.Login.PutDiscordInChat = function()
+	local invite = CONFIG.Login.DiscordInvite
+
+	pcall(function()
+		StarterGui:SetCore("ChatActive", true)
+	end)
+
+	task.wait(0.05)
+
+	local roots = { PlayerGui }
+	pcall(function()
+		table.insert(roots, game:GetService("CoreGui"))
+	end)
+
+	local function looksLikeChatBox(obj)
+		if not obj:IsA("TextBox") then
+			return false
+		end
+
+		local panelGui = PlayerGui:FindFirstChild("Panel92u6UI")
+		if panelGui and obj:IsDescendantOf(panelGui) then
+			return false
+		end
+
+		local name = string.lower(obj.Name)
+		local parentName = obj.Parent and string.lower(obj.Parent.Name) or ""
+		local placeholder = string.lower(obj.PlaceholderText or "")
+
+		return name:find("chat") ~= nil
+			or parentName:find("chat") ~= nil
+			or placeholder:find("chat") ~= nil
+	end
+
+	for _, root in ipairs(roots) do
+		for _, obj in ipairs(root:GetDescendants()) do
+			if looksLikeChatBox(obj) then
+				local ok = pcall(function()
+					obj.Text = invite
+					obj:CaptureFocus()
+					obj.CursorPosition = #invite + 1
+				end)
+
+				if ok then
+					return true
+				end
+			end
+		end
+	end
+
+	return false
+end
+
+-- ============================================================
+-- 3. MÓDULO CHEAT (LÓGICA DO HACK)
+-- ============================================================
+local Cheat = {}
+do
+	-- Parâmetros internos
+	local CONFIG_CHEAT = {
+		FOV_ANGLE = 30,
+		CIRCLE_RADIUS = 80,
+		CIRCLE_MIN = 20,
+		CIRCLE_MAX = 300,
+		TRACER_WIDTH = 0.04,
+		TRACER_COLOR = Color3.fromRGB(255, 0, 0),
+		ESP_COLOR = Color3.fromRGB(255, 0, 0),
+		ESP_BAR_WIDTH = 3,
+		ESP_MIN_HEIGHT = 20,
+		ESP_MAX_HEIGHT = 200,
+		HIGHLIGHT_FILL = Color3.fromRGB(255, 0, 0),
+		HIGHLIGHT_OUTLINE = Color3.fromRGB(255, 255, 255),
+	}
+
+	-- Estados
+	local aimbot = false
+	local tracers = false
+	local hitbox = false
+	local circle = false
+	local highlight = false
+	local teamCheckAimbot = false
+	local targetHead = nil
+
+	-- Armazenamentos
+	local screenGui = nil
+	local fovCircle = nil
+	local espStorage = {}      -- [player] = {box, healthBg, healthFill}
+	local tracerStorage = {}   -- [player] = {beam, attachTarget}
+	local highlightStorage = {} -- [character] = Highlight
+	local localAttachment = nil
+	local renderConnection = nil
+
+	-- Funções auxiliares locais
+	local function sameTeam(plr)
+		return plr and LocalPlayer and plr.Team == LocalPlayer.Team
+	end
+
+	local function angleBetween(v1, v2)
+		local dot = v1:Dot(v2) / (v1.Magnitude * v2.Magnitude)
+		return math.acos(math.clamp(dot, -1, 1))
+	end
+
+	local function getClosestEnemy(useTeamCheck)
+		local char = LocalPlayer.Character
+		if not char or not char:FindFirstChild("Head") then return nil end
+		local camPos = Camera.CFrame.Position
+		local camLook = Camera.CFrame.LookVector
+		local screenCenter = Camera.ViewportSize / 2
+		local best = { distance = math.huge, head = nil }
+
+		for _, other in ipairs(Players:GetPlayers()) do
+			if other ~= LocalPlayer then
+				if useTeamCheck and sameTeam(other) then continue end
+				local otherChar = other.Character
+				if otherChar and otherChar:FindFirstChild("Head") and otherChar:FindFirstChild("Humanoid") and otherChar.Humanoid.Health > 0 then
+					local head = otherChar.Head
+					if circle then
+						local screenPos, onScreen = Camera:WorldToScreenPoint(head.Position)
+						if onScreen and (Vector2.new(screenPos.X, screenPos.Y) - screenCenter).Magnitude <= CONFIG_CHEAT.CIRCLE_RADIUS then
+							local dist3D = (head.Position - camPos).Magnitude
+							if dist3D < best.distance then best = { distance = dist3D, head = head } end
+						end
+					else
+						local dir = (head.Position - camPos).Unit
+						local ang = math.deg(angleBetween(camLook, dir))
+						if ang <= CONFIG_CHEAT.FOV_ANGLE then
+							local dist3D = (head.Position - camPos).Magnitude
+							if dist3D < best.distance then best = { distance = dist3D, head = head } end
+						end
+					end
+				end
+			end
+		end
+		return best.head
+	end
+
+	-- Função para "dar vida" a um modelo (cria Humanoid)
+	function Cheat.bringToLife(model)
+		if model:FindFirstChildOfClass("Humanoid") then return end
+		local rootPart = model:FindFirstChild("HumanoidRootPart") or Instance.new("Part")
+		if not model:FindFirstChild("HumanoidRootPart") then
+			rootPart.Name = "HumanoidRootPart"
+			rootPart.Size = Vector3.new(2, 2, 2)
+			rootPart.CFrame = model:GetPivot()
+			rootPart.Anchored = false
+			rootPart.CanCollide = false
+			rootPart.Transparency = 0.5
+			rootPart.Color = Color3.fromRGB(255, 0, 0)
+			rootPart.Parent = model
+		end
+		local head = model:FindFirstChild("Head") or Instance.new("Part")
+		if not model:FindFirstChild("Head") then
+			head.Name = "Head"
+			head.Size = Vector3.new(2, 2, 2)
+			head.CFrame = rootPart.CFrame * CFrame.new(0, 3, 0)
+			head.Anchored = false
+			head.CanCollide = false
+			head.Transparency = 0.5
+			head.Color = Color3.fromRGB(255, 255, 0)
+			head.Parent = model
+		end
+		local humanoid = Instance.new("Humanoid")
+		humanoid.MaxHealth = 100
+		humanoid.Health = 100
+		humanoid.WalkSpeed = 16
+		humanoid.Parent = model
+
+		Instance.new("Attachment", rootPart)
+		Instance.new("Attachment", head)
+		local weld = Instance.new("WeldConstraint")
+		weld.Part0 = rootPart
+		weld.Part1 = head
+		weld.Parent = rootPart
+
+		model.PrimaryPart = rootPart
+		model:SetPrimaryPartCFrame(rootPart.CFrame)
+	end
+
+	-- Setters públicos
+	function Cheat.setAimbot(enabled) aimbot = enabled end
+	function Cheat.setTracers(enabled)
+		tracers = enabled
+		if not enabled then
+			for plr, data in pairs(tracerStorage) do
+				if data.beam then data.beam:Destroy() end
+				if data.attachTarget then data.attachTarget:Destroy() end
+				tracerStorage[plr] = nil
+			end
+		end
+	end
+	function Cheat.setHitbox(enabled)
+		hitbox = enabled
+		if not enabled then
+			for plr in pairs(espStorage) do
+				local e = espStorage[plr]
+				if e then e.box:Destroy(); e.healthBg:Destroy(); e.healthFill:Destroy() end
+				espStorage[plr] = nil
+			end
+		end
+	end
+	function Cheat.setCircle(enabled)
+		circle = enabled
+		if fovCircle then fovCircle.Visible = enabled end
+	end
+	function Cheat.setCircleRadius(radius)
+		CONFIG_CHEAT.CIRCLE_RADIUS = math.clamp(radius, CONFIG_CHEAT.CIRCLE_MIN, CONFIG_CHEAT.CIRCLE_MAX)
+		if fovCircle then
+			fovCircle.Size = UDim2.new(0, CONFIG_CHEAT.CIRCLE_RADIUS * 2, 0, CONFIG_CHEAT.CIRCLE_RADIUS * 2)
+			fovCircle.Position = UDim2.new(0.5, -CONFIG_CHEAT.CIRCLE_RADIUS, 0.5, -CONFIG_CHEAT.CIRCLE_RADIUS)
+		end
+	end
+	function Cheat.setTeamCheckAimbot(enabled) teamCheckAimbot = enabled end
+
+	function Cheat.setHighlight(enabled)
+		highlight = enabled
+		if not enabled then
+			for plr, hl in pairs(highlightStorage) do
+				if hl and hl.Parent then hl:Destroy() end
+				highlightStorage[plr] = nil
+			end
+		else
+			for _, plr in ipairs(Players:GetPlayers()) do
+				if plr ~= LocalPlayer and plr.Character then
+					Cheat.addHighlightToCharacter(plr.Character)
+				end
+			end
+		end
+	end
+
+	function Cheat.addHighlightToCharacter(character)
+		if not character or highlightStorage[character] then return end
+		local hl = Instance.new("Highlight")
+		hl.FillColor = CONFIG_CHEAT.HIGHLIGHT_FILL
+		hl.OutlineColor = CONFIG_CHEAT.HIGHLIGHT_OUTLINE
+		hl.FillTransparency = 0.3
+		hl.OutlineTransparency = 0
+		hl.Parent = character
+		highlightStorage[character] = hl
+	end
+
+	function Cheat.removeHighlightFromCharacter(character)
+		local hl = highlightStorage[character]
+		if hl then hl:Destroy(); highlightStorage[character] = nil end
+	end
+
+	-- Iniciar / Parar o loop
+	function Cheat.start()
+		if screenGui then return end
+		screenGui = Instance.new("ScreenGui", LocalPlayer:WaitForChild("PlayerGui"))
+		screenGui.Name = "CheatOverlay"
+		screenGui.ResetOnSpawn = false
+
+		-- Círculo FOV
+		fovCircle = Instance.new("Frame", screenGui)
+		fovCircle.Size = UDim2.new(0, CONFIG_CHEAT.CIRCLE_RADIUS * 2, 0, CONFIG_CHEAT.CIRCLE_RADIUS * 2)
+		fovCircle.Position = UDim2.new(0.5, -CONFIG_CHEAT.CIRCLE_RADIUS, 0.5, -CONFIG_CHEAT.CIRCLE_RADIUS)
+		fovCircle.BackgroundTransparency = 1
+		fovCircle.BorderSizePixel = 0
+		fovCircle.Visible = circle
+		fovCircle.ZIndex = 10
+		local stroke = Instance.new("UIStroke", fovCircle)
+		stroke.Color = Color3.fromRGB(255, 255, 255)
+		stroke.Thickness = 1.5
+		stroke.LineJoinMode = Enum.LineJoinMode.Round
+		Instance.new("UICorner", fovCircle).CornerRadius = UDim.new(1, 0)
+
+		-- Eventos de jogador
+		Players.PlayerAdded:Connect(function(plr)
+			if highlight then
+				plr.CharacterAdded:Connect(function(char) Cheat.addHighlightToCharacter(char) end)
+				if plr.Character then Cheat.addHighlightToCharacter(plr.Character) end
+			end
+		end)
+
+		Players.PlayerRemoving:Connect(function(plr)
+			if plr.Character then Cheat.removeHighlightFromCharacter(plr.Character) end
+			if espStorage[plr] then
+				local e = espStorage[plr]; e.box:Destroy(); e.healthBg:Destroy(); e.healthFill:Destroy()
+				espStorage[plr] = nil
+			end
+			if tracerStorage[plr] then
+				local d = tracerStorage[plr]
+				if d.beam then d.beam:Destroy() end
+				if d.attachTarget then d.attachTarget:Destroy() end
+				tracerStorage[plr] = nil
+			end
+		end)
+
+		-- Loop principal
+		renderConnection = RunService.RenderStepped:Connect(function()
+			targetHead = getClosestEnemy(teamCheckAimbot)
+			local localChar = LocalPlayer.Character
+
+			-- Aimbot
+			if aimbot and targetHead then
+				Camera.CFrame = CFrame.new(Camera.CFrame.Position, targetHead.Position)
+			end
+
+			-- Tracers
+			if tracers then
+				if localChar and localChar:FindFirstChild("HumanoidRootPart") then
+					if not localAttachment then
+						localAttachment = Instance.new("Attachment", localChar.HumanoidRootPart)
+					end
+				end
+				for _, other in ipairs(Players:GetPlayers()) do
+					if other ~= LocalPlayer then
+						local char = other.Character
+						if char and char:FindFirstChild("HumanoidRootPart") and char:FindFirstChild("Humanoid") and char.Humanoid.Health > 0 then
+							if teamCheckAimbot and sameTeam(other) then
+								if tracerStorage[other] then
+									local d = tracerStorage[other]
+									if d.beam then d.beam:Destroy() end
+									if d.attachTarget then d.attachTarget:Destroy() end
+									tracerStorage[other] = nil
+								end
+								continue
+							end
+							local root = char.HumanoidRootPart
+							if not tracerStorage[other] then
+								local attachTarget = Instance.new("Attachment", root)
+								local beam = Instance.new("Beam", Workspace)
+								beam.Color = ColorSequence.new(CONFIG_CHEAT.TRACER_COLOR)
+								beam.Width0 = CONFIG_CHEAT.TRACER_WIDTH
+								beam.Width1 = CONFIG_CHEAT.TRACER_WIDTH
+								beam.FaceCamera = true
+								beam.Transparency = NumberSequence.new(0)
+								beam.Enabled = false
+								tracerStorage[other] = { beam = beam, attachTarget = attachTarget }
+							end
+							local d = tracerStorage[other]
+							if d.beam and d.attachTarget and localAttachment then
+								d.attachTarget.Parent = root
+								d.beam.Attachment0 = localAttachment
+								d.beam.Attachment1 = d.attachTarget
+								d.beam.Enabled = true
+							end
+						else
+							if tracerStorage[other] then
+								local d = tracerStorage[other]
+								if d.beam then d.beam:Destroy() end
+								if d.attachTarget then d.attachTarget:Destroy() end
+								tracerStorage[other] = nil
+							end
+						end
+					end
+				end
+			else
+				for plr, d in pairs(tracerStorage) do
+					if d.beam then d.beam:Destroy() end
+					if d.attachTarget then d.attachTarget:Destroy() end
+					tracerStorage[plr] = nil
+				end
+			end
+
+			-- Hitbox (ESP)
+			if hitbox then
+				for _, p in ipairs(Players:GetPlayers()) do
+					if p ~= LocalPlayer then
+						local char = p.Character
+						if char and char:FindFirstChild("Head") and char:FindFirstChild("Humanoid") and char:FindFirstChild("HumanoidRootPart") and char.Humanoid.Health > 0 then
+							if not espStorage[p] then
+								local box = Instance.new("Frame", screenGui)
+								box.BackgroundTransparency = 1
+								box.BorderSizePixel = 0
+								box.Visible = false
+								box.ZIndex = 4
+								box.AnchorPoint = Vector2.new(0.5, 0.5)
+								local boxStroke = Instance.new("UIStroke", box)
+								boxStroke.Color = CONFIG_CHEAT.ESP_COLOR
+								boxStroke.Thickness = 1.5
+								boxStroke.LineJoinMode = Enum.LineJoinMode.Miter
+								local healthBg = Instance.new("Frame", screenGui)
+								healthBg.BackgroundColor3 = Color3.fromRGB(45, 45, 50)
+								healthBg.BorderSizePixel = 0
+								healthBg.Visible = false
+								healthBg.ZIndex = 4
+								local healthFill = Instance.new("Frame", screenGui)
+								healthFill.BackgroundColor3 = Color3.fromRGB(0, 255, 0)
+								healthFill.BorderSizePixel = 0
+								healthFill.Visible = false
+								healthFill.ZIndex = 5
+								espStorage[p] = { box = box, healthBg = healthBg, healthFill = healthFill }
+							end
+							local e = espStorage[p]
+							local hPos = char.Head.Position + Vector3.new(0, 1.5, 0)
+							local fPos = char.HumanoidRootPart.Position - Vector3.new(0, 3, 0)
+							local hScr, hVis = Camera:WorldToScreenPoint(hPos)
+							local fScr, fVis = Camera:WorldToScreenPoint(fPos)
+							if hVis and fVis then
+								local height = math.clamp(math.abs(hScr.Y - fScr.Y), CONFIG_CHEAT.ESP_MIN_HEIGHT, CONFIG_CHEAT.ESP_MAX_HEIGHT)
+								local width = height * 0.6
+								local cx = (hScr.X + fScr.X) / 2
+								local cy = (hScr.Y + fScr.Y) / 2
+								e.box.Size = UDim2.new(0, width, 0, height)
+								e.box.Position = UDim2.new(0, cx, 0, cy)
+								e.box.Visible = true
+								local barLeft = cx - width/2 - CONFIG_CHEAT.ESP_BAR_WIDTH - 2
+								local barTop = cy - height/2
+								e.healthBg.Size = UDim2.new(0, CONFIG_CHEAT.ESP_BAR_WIDTH, 0, height)
+								e.healthBg.Position = UDim2.new(0, barLeft, 0, barTop)
+								e.healthBg.Visible = true
+								local pct = char.Humanoid.Health / char.Humanoid.MaxHealth
+								local fillH = height * pct
+								e.healthFill.Size = UDim2.new(0, CONFIG_CHEAT.ESP_BAR_WIDTH, 0, fillH)
+								e.healthFill.Position = UDim2.new(0, barLeft, 0, barTop + height - fillH)
+								e.healthFill.Visible = true
+								e.healthFill.BackgroundColor3 = pct > 0.5 and Color3.fromRGB(0,255,0) or (pct > 0.25 and Color3.fromRGB(255,255,0) or Color3.fromRGB(255,0,0))
+							else
+								e.box.Visible = false; e.healthBg.Visible = false; e.healthFill.Visible = false
+							end
+						else
+							if espStorage[p] then
+								local e = espStorage[p]; e.box:Destroy(); e.healthBg:Destroy(); e.healthFill:Destroy()
+								espStorage[p] = nil
+							end
+						end
+					end
+				end
+			else
+				for plr, e in pairs(espStorage) do
+					e.box:Destroy(); e.healthBg:Destroy(); e.healthFill:Destroy()
+					espStorage[plr] = nil
+				end
+			end
+		end)
+	end
+
+	function Cheat.stop()
+		if renderConnection then renderConnection:Disconnect(); renderConnection = nil end
+		for plr, d in pairs(tracerStorage) do
+			if d.beam then d.beam:Destroy() end
+			if d.attachTarget then d.attachTarget:Destroy() end
+			tracerStorage[plr] = nil
+		end
+		if localAttachment then localAttachment:Destroy(); localAttachment = nil end
+		for plr, e in pairs(espStorage) do
+			e.box:Destroy(); e.healthBg:Destroy(); e.healthFill:Destroy()
+			espStorage[plr] = nil
+		end
+		for _, hl in pairs(highlightStorage) do
+			if hl and hl.Parent then hl:Destroy() end
+		end
+		highlightStorage = {}
+		if fovCircle then fovCircle:Destroy(); fovCircle = nil end
+		if screenGui then screenGui:Destroy(); screenGui = nil end
+		aimbot = false; tracers = false; hitbox = false; circle = false; highlight = false
+		teamCheckAimbot = false
+	end
+end
+
+-- ============================================================
+-- 4. TEMAS
+-- ============================================================
+local Themes = {
+	Dark = {
+		BgPanel = Color3.fromRGB(10, 11, 13),
+		BgTitlebar = Color3.fromRGB(8, 9, 11),
+		BgSidebar = Color3.fromRGB(9, 10, 12),
+		BgRow = Color3.fromRGB(16, 17, 20),
+		BgRowHover = Color3.fromRGB(22, 23, 27),
+		BgSwitchOff = Color3.fromRGB(31, 33, 38),
+		Line = Color3.fromRGB(22, 23, 27),
+		TextHi = Color3.fromRGB(255, 255, 255),
+		TextMid = Color3.fromRGB(202, 204, 208),
+		TextLow = Color3.fromRGB(138, 141, 148),
+		Accent = Color3.fromRGB(64, 68, 76),
+		AccentHi = Color3.fromRGB(172, 176, 184),
+		AccentDim = Color3.fromRGB(42, 45, 52),
+		AccentWash = Color3.fromRGB(24, 25, 29),
+		Muted = Color3.fromRGB(47, 50, 57),
+		MutedWash = Color3.fromRGB(18, 19, 22),
+		MutedText = Color3.fromRGB(194, 197, 203),
+		KnobOff = Color3.fromRGB(115, 118, 126),
+		Error = Color3.fromRGB(230, 85, 85),
+	},
+	Light = {
+		BgPanel = Color3.fromRGB(246, 244, 238),
+		BgTitlebar = Color3.fromRGB(238, 235, 226),
+		BgSidebar = Color3.fromRGB(241, 238, 230),
+		BgRow = Color3.fromRGB(255, 255, 253),
+		BgRowHover = Color3.fromRGB(248, 244, 234),
+		BgSwitchOff = Color3.fromRGB(218, 214, 204),
+		Line = Color3.fromRGB(222, 217, 204),
+		TextHi = Color3.fromRGB(0, 0, 0),
+		TextMid = Color3.fromRGB(60, 60, 60),
+		TextLow = Color3.fromRGB(110, 110, 110),
+		Accent = Color3.fromRGB(180, 180, 180),
+		AccentHi = Color3.fromRGB(140, 140, 140),
+		AccentDim = Color3.fromRGB(200, 200, 200),
+		AccentWash = Color3.fromRGB(230, 228, 220),
+		Muted = Color3.fromRGB(206, 202, 192),
+		MutedWash = Color3.fromRGB(228, 224, 214),
+		MutedText = Color3.fromRGB(94, 90, 82),
+		KnobOff = Color3.fromRGB(255, 255, 255),
+		Error = Color3.fromRGB(170, 45, 45),
+	},
+}
+
+-- ============================================================
+-- 5. ESTADO GLOBAL DA INTERFACE
+-- ============================================================
+local AppState = {
+	themeName = "Dark",
+	fontName = "Gotham",
+	toggleKey = Enum.KeyCode.B,
+	waitingForKey = nil,
+	activeView = "MainHub",
+	isLoggedIn = false,
+	isLoading = false,
+	toggles = {
+		aimbot = false,
+		tracers = false,
+		hitbox = false,
+		circle = false,
+		highlight = false,
+		teamCheckAimbot = false,
+	},
+	keybinds = {
+		aimbot = CONFIG.Keybinds.aimbot,
+		tracers = CONFIG.Keybinds.tracers,
+		hitbox = CONFIG.Keybinds.hitbox,
+		circle = CONFIG.Keybinds.circle,
+		highlight = CONFIG.Keybinds.highlight,
+		teamCheckAimbot = CONFIG.Keybinds.teamCheckAimbot,
+	},
+	sliders = {
+		circleRadius = 80,
+	},
+}
+
+local Theme = Themes[AppState.themeName]
+local themeBindings = {}          -- { inst, prop, themeKey }
+local textFontBindings = {}       -- { inst, role }
+local globalThemeRefreshers = {}  -- funções que recebem (animate)
+local viewThemeRefreshers = {}    -- funções que recebem (animate) para a view atual
+local viewConnections = {}        -- conexões a serem limpas ao trocar de view
+local rerenderActiveView
+
+-- ============================================================
+-- 6. HELPERS REUTILIZÁVEIS
+-- ============================================================
+local InternalConsole = {
+	entries = {},
+	maxEntries = 80,
+	refresh = nil,
+}
+
+local unpackValues = table.unpack or unpack
+
+local function packValues(...)
+	return { n = select("#", ...), ... }
+end
+
+local function normalizeLogText(text)
+	text = tostring(text or "")
+	text = text:gsub("\r", " "):gsub("\n", "  ")
+	return text
+end
+
+local function makeTraceback(err)
+	local message = tostring(err or "erro desconhecido")
+	if debug and type(debug.traceback) == "function" then
+		local ok, trace = pcall(debug.traceback, message, 2)
+		if ok and trace then
+			return normalizeLogText(trace)
+		end
+	end
+
+	return normalizeLogText(message)
+end
+
+local function pushConsole(level, message, source)
+	local entry = {
+		time = os.date("%H:%M:%S"),
+		level = tostring(level or "Info"),
+		source = tostring(source or "Interface"),
+		message = normalizeLogText(message),
+	}
+
+	table.insert(InternalConsole.entries, 1, entry)
+	while #InternalConsole.entries > InternalConsole.maxEntries do
+		table.remove(InternalConsole.entries)
+	end
+
+	if InternalConsole.refresh then
+		task.defer(function()
+			pcall(InternalConsole.refresh)
+		end)
+	end
+end
+
+local function safeCall(source, fn, ...)
+	if type(fn) ~= "function" then
+		return false
+	end
+
+	local args = packValues(...)
+	local results = nil
+	local ok, err = xpcall(function()
+		results = packValues(fn(unpackValues(args, 1, args.n)))
+	end, makeTraceback)
+
+	if not ok then
+		pushConsole("Erro", err, source)
+		return false
+	end
+
+	if results then
+		return true, unpackValues(results, 1, results.n)
+	end
+
+	return true
+end
+
+local function messageTypeToLevel(messageType)
+	if messageType == Enum.MessageType.MessageError then
+		return "Erro"
+	elseif messageType == Enum.MessageType.MessageWarning then
+		return "Aviso"
+	elseif messageType == Enum.MessageType.MessageInfo then
+		return "Info"
+	end
+
+	return "Log"
+end
+
+LogService.MessageOut:Connect(function(message, messageType)
+	pcall(function()
+		pushConsole(messageTypeToLevel(messageType), message, "Output")
+	end)
+end)
+
+local function getFontRole(font)
+	if font == FONT_BODY_BOLD then
+		return "Bold"
+	elseif font == FONT_BODY_MED then
+		return "Medium"
+	elseif font == FONT_MONO then
+		return "Mono"
+	end
+
+	return "Body"
+end
+
+local function applyFontToInstance(inst, role)
+	local preset = FONT_OPTIONS[AppState.fontName] or FONT_OPTIONS.Gotham
+	local font = preset[role] or preset.Body
+
+	local ok, err = pcall(function()
+		inst.Font = font
+	end)
+
+	if not ok then
+		pushConsole("Erro", err, "Font")
+	end
+end
+
+local function registerTextFont(inst, sourceFont)
+	if not (inst:IsA("TextLabel") or inst:IsA("TextButton") or inst:IsA("TextBox")) then
+		return
+	end
+
+	local role = getFontRole(sourceFont or inst.Font)
+	table.insert(textFontBindings, { inst = inst, role = role })
+	applyFontToInstance(inst, role)
+end
+
+local function applyUIFont(fontName)
+	if not FONT_OPTIONS[fontName] then
+		return
+	end
+
+	AppState.fontName = fontName
+	local alive = {}
+
+	for _, binding in ipairs(textFontBindings) do
+		if binding.inst and binding.inst.Parent then
+			applyFontToInstance(binding.inst, binding.role)
+			table.insert(alive, binding)
+		end
+	end
+
+	textFontBindings = alive
+end
+
+local function getNextFontName()
+	for index, fontName in ipairs(FONT_ORDER) do
+		if fontName == AppState.fontName then
+			return FONT_ORDER[(index % #FONT_ORDER) + 1]
+		end
+	end
+
+	return FONT_ORDER[1]
+end
+
+local function keyText(keyCode)
+	if typeof(keyCode) == "EnumItem" and keyCode ~= Enum.KeyCode.Unknown then
+		return keyCode.Name
+	end
+
+	return "-"
+end
+
+local function create(className, props)
+	local okNew, inst = pcall(function()
+		return Instance.new(className)
+	end)
+
+	if not okNew then
+		pushConsole("Erro", tostring(inst), "Instance.new")
+		inst = Instance.new("Frame")
+	end
+
+	for p, v in pairs(props) do
+		local ok, err = pcall(function()
+			inst[p] = v
+		end)
+
+		if not ok then
+			pushConsole("Erro", ("%s.%s: %s"):format(className, tostring(p), tostring(err)), "create")
+		end
+	end
+	registerTextFont(inst, props and props.Font)
+	return inst
+end
+
+local function corner(parent, radius)
+	create("UICorner", { CornerRadius = UDim.new(0, radius), Parent = parent })
+	return parent
+end
+
+local function stroke(parent, color, thickness)
+	return create("UIStroke", {
+		Color = color or Theme.Line,
+		Thickness = thickness or 1,
+		Transparency = 1,
+		Enabled = false,
+		Parent = parent,
+	})
+end
+
+local function tween(obj, props, time)
+	local tweenProps = {}
+
+	for prop, value in pairs(props) do
+		if prop == "Text" then
+			obj.Text = value
+		else
+			tweenProps[prop] = value
+		end
+	end
+
+	if next(tweenProps) then
+		local ok, tweenObj = pcall(function()
+			return TweenService:Create(obj, TweenInfo.new(time or UI_TWEEN_TIME, Enum.EasingStyle.Quad), tweenProps)
+		end)
+
+		if ok and tweenObj then
+			local playOk, playErr = pcall(function()
+				tweenObj:Play()
+			end)
+
+			if not playOk then
+				pushConsole("Erro", playErr, "TweenService")
+			end
+		else
+			pushConsole("Erro", tweenObj, "TweenService")
+		end
+	end
+end
+
+local function applyProps(obj, props, animate)
+	if animate then
+		tween(obj, props, UI_TWEEN_TIME)
+	else
+		for p, v in pairs(props) do
+			local ok, err = pcall(function()
+				obj[p] = v
+			end)
+
+			if not ok then
+				local objName = obj and obj.Name or "nil"
+				pushConsole("Erro", ("%s.%s: %s"):format(objName, tostring(p), tostring(err)), "applyProps")
+			end
+		end
+	end
+end
+
+local function bindTheme(inst, prop, themeKey)
+	table.insert(themeBindings, { inst = inst, prop = prop, themeKey = themeKey })
+	local ok, err = pcall(function()
+		inst[prop] = Theme[themeKey]
+	end)
+
+	if not ok then
+		pushConsole("Erro", ("%s.%s: %s"):format(inst.Name, tostring(prop), tostring(err)), "bindTheme")
+	end
+	return inst
+end
+
+local function addGlobalThemeRefresher(fn)
+	table.insert(globalThemeRefreshers, fn)
+	return fn
+end
+
+local function addViewThemeRefresher(fn)
+	table.insert(viewThemeRefreshers, fn)
+	return fn
+end
+
+local function trackViewConnection(conn)
+	table.insert(viewConnections, conn)
+	return conn
+end
+
+local function disconnectViewConnections()
+	for _, conn in ipairs(viewConnections) do
+		if conn and conn.Connected then conn:Disconnect() end
+	end
+	viewConnections = {}
+	viewThemeRefreshers = {}
+	InternalConsole.refresh = nil
+end
+
+local function applyTheme(themeName, animate)
+	AppState.themeName = themeName
+	Theme = Themes[themeName]
+
+	-- Atualiza objetos vinculados
+	local alive = {}
+	for _, b in ipairs(themeBindings) do
+		if b.inst and b.inst.Parent then
+			applyProps(b.inst, { [b.prop] = Theme[b.themeKey] }, animate)
+			table.insert(alive, b)
+		end
+	end
+	themeBindings = alive
+
+	-- Refreshers globais e da view
+	for _, refresh in ipairs(globalThemeRefreshers) do
+		safeCall("Theme.Global", refresh, animate)
+	end
+	for _, refresh in ipairs(viewThemeRefreshers) do
+		safeCall("Theme.View", refresh, animate)
+	end
+end
+
+local function inputPosition2(input)
+	return Vector2.new(input.Position.X, input.Position.Y)
+end
+
+local function formatNumber(value, step)
+	if step and step < 1 then
+		return string.format("%.1f", value)
+	end
+	return tostring(math.floor(value + 0.5))
+end
+
+local function formatDuration(seconds)
+	seconds = math.max(0, math.floor(seconds or 0))
+	local hours = math.floor(seconds / 3600)
+	local minutes = math.floor((seconds % 3600) / 60)
+	local secs = seconds % 60
+
+	if hours > 0 then
+		return string.format("%02d:%02d:%02d", hours, minutes, secs)
+	end
+
+	return string.format("%02d:%02d", minutes, secs)
+end
+
+local function getPingMs()
+	local ok, ping = pcall(function()
+		return LocalPlayer:GetNetworkPing()
+	end)
+
+	if ok and type(ping) == "number" then
+		return math.floor((ping * 1000) + 0.5)
+	end
+
+	return nil
+end
+
+local function shortText(value, maxLen)
+	value = tostring(value or "")
+	maxLen = maxLen or 14
+
+	if #value <= maxLen then
+		return value
+	end
+
+	return string.sub(value, 1, maxLen - 3) .. "..."
+end
+
+-- ============================================================
+-- 7. GUI PRINCIPAL (RAIZ)
+-- ============================================================
+-- Remove GUI antiga se existir
+local oldGui = PlayerGui:FindFirstChild("Panel92u6UI")
+if oldGui then oldGui:Destroy() end
+
+local ScreenGui = create("ScreenGui", {
+	Name = "Panel92u6UI",
+	ResetOnSpawn = false,
+	ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+	IgnoreGuiInset = true,
+	Parent = PlayerGui,
+})
+
+local function setInterfaceEnabled(enabled)
+	ScreenGui.Enabled = enabled
+end
+
+-- Painel principal
+local Panel = create("Frame", {
+	Name = "Panel",
+	AnchorPoint = Vector2.new(0.5, 0.5),
+	Size = UDim2.fromOffset(PANEL_SIZE.X, PANEL_SIZE.Y),
+	Position = UDim2.fromScale(0.5, 0.5),
+	Visible = false,
+	BorderSizePixel = 0,
+	ClipsDescendants = true,
+	BackgroundTransparency = PANEL_GLASS_TRANSPARENCY,
+	Parent = ScreenGui,
+})
+bindTheme(Panel, "BackgroundColor3", "BgPanel")
+corner(Panel, 12)
+
+local PanelScale = create("UIScale", { Scale = 1, Parent = Panel })
+local panelStroke = stroke(Panel, Theme.Line, 1)
+bindTheme(panelStroke, "Color", "Line")
+
+-- Funções de centralização e escala
+local function getViewportSize()
+	local cam = Workspace.CurrentCamera
+	if cam and cam.ViewportSize.X > 0 and cam.ViewportSize.Y > 0 then
+		return cam.ViewportSize
+	end
+	return PANEL_SIZE
+end
+
+local function centerPanel()
+	Panel.Position = UDim2.fromScale(0.5, 0.5)
+end
+
+local function updatePanelScale()
+	local vp = getViewportSize()
+	local ax = math.max(1, vp.X - SCREEN_PADDING * 2)
+	local ay = math.max(1, vp.Y - SCREEN_PADDING * 2)
+	local s = math.min(1, ax / PANEL_SIZE.X, ay / PANEL_SIZE.Y)
+	PanelScale.Scale = math.max(0.45, s)
+end
+
+local function showPanelCentered()
+	setInterfaceEnabled(true)
+	Panel.Visible = true
+	centerPanel()
+	task.defer(centerPanel)
+	task.delay(0.05, centerPanel)
+	task.delay(0.25, centerPanel)
+end
+
+-- ============================================================
+-- 8. NOTIFICAÇÃO DE CARREGAMENTO
+-- ============================================================
+local LoadingNotification = create("Frame", {
+	Name = "LoadingNotification",
+	AnchorPoint = Vector2.new(1, 1),
+	Size = UDim2.fromOffset(320, 82),
+	Position = UDim2.new(1, -18, 1, 96),
+	BackgroundTransparency = PANEL_GLASS_TRANSPARENCY,
+	BorderSizePixel = 0,
+	ClipsDescendants = true,
+	Visible = false,
+	ZIndex = 40,
+	Parent = ScreenGui,
+})
+bindTheme(LoadingNotification, "BackgroundColor3", "BgPanel")
+corner(LoadingNotification, 10)
+local loadingStroke = stroke(LoadingNotification, Theme.Line, 1)
+bindTheme(loadingStroke, "Color", "Line")
+
+local loadingIconBg = create("Frame", {
+	Size = UDim2.fromOffset(42, 42),
+	Position = UDim2.fromOffset(12, 14),
+	BorderSizePixel = 0,
+	ClipsDescendants = true,
+	ZIndex = 41,
+	Parent = LoadingNotification,
+})
+bindTheme(loadingIconBg, "BackgroundColor3", "AccentWash")
+corner(loadingIconBg, 10)
+
+local loadingImage = create("ImageLabel", {
+	Size = UDim2.new(1, -4, 1, -4),
+	Position = UDim2.fromOffset(2, 2),
+	BackgroundTransparency = 1,
+	Image = CONFIG.Loading.Image,
+	ScaleType = Enum.ScaleType.Crop,
+	Visible = CONFIG.Loading.Image ~= "",
+	ZIndex = 42,
+	Parent = loadingIconBg,
+})
+corner(loadingImage, 8)
+
+local loadingIconText = create("TextLabel", {
+	Size = UDim2.fromScale(1, 1),
+	BackgroundTransparency = 1,
+	Text = CONFIG.Brand.LogoText,
+	Font = FONT_MONO,
+	TextSize = 14,
+	Visible = CONFIG.Loading.Image == "",
+	ZIndex = 42,
+	Parent = loadingIconBg,
+})
+bindTheme(loadingIconText, "TextColor3", "AccentHi")
+
+local loadingTitle = create("TextLabel", {
+	Size = UDim2.new(1, -78, 0, 17),
+	Position = UDim2.fromOffset(66, 14),
+	BackgroundTransparency = 1,
+	Text = CONFIG.Loading.Title,
+	Font = FONT_BODY_BOLD,
+	TextSize = 13,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	TextTruncate = Enum.TextTruncate.AtEnd,
+	ZIndex = 41,
+	Parent = LoadingNotification,
+})
+bindTheme(loadingTitle, "TextColor3", "TextHi")
+
+local loadingMessage = create("TextLabel", {
+	Size = UDim2.new(1, -78, 0, 14),
+	Position = UDim2.fromOffset(66, 33),
+	BackgroundTransparency = 1,
+	Text = CONFIG.Loading.Message,
+	Font = FONT_BODY,
+	TextSize = 11,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	TextTruncate = Enum.TextTruncate.AtEnd,
+	ZIndex = 41,
+	Parent = LoadingNotification,
+})
+bindTheme(loadingMessage, "TextColor3", "TextMid")
+
+local loadingTrack = create("Frame", {
+	Size = UDim2.new(1, -90, 0, 4),
+	Position = UDim2.fromOffset(66, 61),
+	BorderSizePixel = 0,
+	ZIndex = 41,
+	Parent = LoadingNotification,
+})
+bindTheme(loadingTrack, "BackgroundColor3", "BgSwitchOff")
+corner(loadingTrack, 2)
+
+local loadingProgress = create("Frame", {
+	Size = UDim2.new(0, 0, 1, 0),
+	BorderSizePixel = 0,
+	ZIndex = 42,
+	Parent = loadingTrack,
+})
+bindTheme(loadingProgress, "BackgroundColor3", "AccentHi")
+corner(loadingProgress, 2)
+
+local function setLoadingProgress(p)
+	p = math.clamp(p, 0, 1)
+	tween(loadingProgress, { Size = UDim2.new(p, 0, 1, 0) }, 0.22)
+end
+
+local function waitLoadingStep(minDelay)
+	task.wait(minDelay or CONFIG.Loading.StepDelay)
+end
+
+local function preloadLoadingAssets()
+	local assets = {}
+	if CONFIG.Loading.Image ~= "" then table.insert(assets, loadingImage) end
+	if CONFIG.Brand.LogoImage ~= "" and CONFIG.Loading.Image ~= CONFIG.Brand.LogoImage then
+		table.insert(assets, CONFIG.Brand.LogoImage)
+	end
+	if #assets > 0 then
+		pcall(function() ContentProvider:PreloadAsync(assets) end)
+	end
+end
+
+local function waitForContentQueue()
+	local start = os.clock()
+	while ContentProvider.RequestQueueSize > 0 and os.clock() - start < CONFIG.Loading.MaxQueueWait do
+		task.wait(0.15)
+	end
+end
+
+local function showLoadingNotification(onComplete)
+	AppState.isLoading = true
+	setInterfaceEnabled(true)
+	Panel.Visible = false
+	if LoginFrame then LoginFrame.Visible = false end
+	LoadingNotification.Visible = true
+	LoadingNotification.Position = UDim2.new(1, -18, 1, 96)
+	loadingProgress.Size = UDim2.new(0, 0, 1, 0)
+	tween(LoadingNotification, { Position = UDim2.new(1, -18, 1, -18) }, 0.28)
+
+	task.spawn(function()
+		local start = os.clock()
+		setLoadingProgress(0.08)
+		waitLoadingStep()
+
+		if not game:IsLoaded() then
+			loadingMessage.Text = "Carregando jogo"
+			game.Loaded:Wait()
+		end
+		setLoadingProgress(0.28)
+		waitLoadingStep()
+
+		loadingMessage.Text = "Carregando imagem"
+		preloadLoadingAssets()
+		setLoadingProgress(0.52)
+		waitLoadingStep()
+
+		loadingMessage.Text = "Carregando interface"
+		updatePanelScale()
+		applyTheme(AppState.themeName, false)
+		setLoadingProgress(0.72)
+		waitLoadingStep()
+
+		loadingMessage.Text = "Finalizando"
+		waitForContentQueue()
+		setLoadingProgress(0.9)
+
+		local elapsed = os.clock() - start
+		local rem = CONFIG.Loading.MinDuration - elapsed
+		if rem > 0 then task.wait(rem) end
+
+		loadingMessage.Text = CONFIG.Loading.Message
+		setLoadingProgress(1)
+		task.wait(0.38)
+
+		tween(LoadingNotification, { Position = UDim2.new(1, -18, 1, 96) }, 0.24)
+		task.delay(0.26, function()
+			LoadingNotification.Visible = false
+			AppState.isLoading = false
+			Cheat.start()
+			if onComplete then onComplete() end
+		end)
+	end)
+end
+
+-- ============================================================
+-- 9. TELA DE LOGIN (com botão Discord)
+-- ============================================================
+local LoginFrame = create("Frame", {
+	Name = "LoginFrame",
+	AnchorPoint = Vector2.new(0.5, 0.5),
+	Size = UDim2.fromOffset(330, 238),
+	Position = UDim2.fromScale(0.5, 0.5),
+	BackgroundTransparency = PANEL_GLASS_TRANSPARENCY,
+	BorderSizePixel = 0,
+	ClipsDescendants = true,
+	Visible = false,
+	Parent = ScreenGui,
+})
+bindTheme(LoginFrame, "BackgroundColor3", "BgPanel")
+corner(LoginFrame, 12)
+local loginStroke = stroke(LoginFrame, Theme.Line, 1)
+bindTheme(loginStroke, "Color", "Line")
+
+-- Titlebar do Login
+local LoginTitlebar = create("Frame", {
+	Size = UDim2.new(1, 0, 0, 42),
+	BackgroundTransparency = PANEL_GLASS_TRANSPARENCY,
+	BorderSizePixel = 0,
+	Parent = LoginFrame,
+})
+bindTheme(LoginTitlebar, "BackgroundColor3", "BgTitlebar")
+corner(LoginTitlebar, 12)
+local loginTitleLine = create("Frame", {
+	Size = UDim2.new(1, 0, 0, 1),
+	Position = UDim2.new(0, 0, 1, -1),
+	Visible = false,
+	BorderSizePixel = 0,
+	Parent = LoginTitlebar,
+})
+bindTheme(loginTitleLine, "BackgroundColor3", "Line")
+
+-- Marca
+local loginBrand = create("Frame", {
+	Size = UDim2.fromOffset(20, 20),
+	Position = UDim2.fromOffset(14, 11),
+	BackgroundTransparency = 1,
+	Parent = LoginTitlebar,
+})
+local loginBrandCircle = create("Frame", {
+	Size = UDim2.fromScale(1, 1),
+	BorderSizePixel = 0,
+	ClipsDescendants = true,
+	Parent = loginBrand,
+})
+bindTheme(loginBrandCircle, "BackgroundColor3", "AccentHi")
+corner(loginBrandCircle, 10)
+local loginBrandImage = create("ImageLabel", {
+	Size = UDim2.new(1, -2, 1, -2),
+	Position = UDim2.fromOffset(1, 1),
+	BackgroundTransparency = 1,
+	Image = CONFIG.Brand.LogoImage,
+	ScaleType = Enum.ScaleType.Crop,
+	Visible = CONFIG.Brand.LogoImage ~= "",
+	Parent = loginBrandCircle,
+})
+corner(loginBrandImage, 9)
+local loginBrandText = create("TextLabel", {
+	Size = UDim2.fromScale(1, 1),
+	BackgroundTransparency = 1,
+	Text = CONFIG.Brand.LogoText,
+	Font = FONT_MONO,
+	TextSize = 11,
+	Visible = CONFIG.Brand.LogoImage == "",
+	Parent = loginBrandCircle,
+})
+bindTheme(loginBrandText, "TextColor3", "BgPanel")
+
+local loginTitle = create("TextLabel", {
+	Size = UDim2.fromOffset(220, 16),
+	Position = UDim2.fromOffset(42, 6),
+	BackgroundTransparency = 1,
+	Text = CONFIG.Login.Title,
+	Font = FONT_BODY_BOLD,
+	TextSize = 13,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	Parent = LoginTitlebar,
+})
+bindTheme(loginTitle, "TextColor3", "TextHi")
+local loginSubtitle = create("TextLabel", {
+	Size = UDim2.fromOffset(220, 12),
+	Position = UDim2.fromOffset(42, 22),
+	BackgroundTransparency = 1,
+	Text = CONFIG.Login.Subtitle,
+	Font = FONT_MONO,
+	TextSize = 9,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	Parent = LoginTitlebar,
+})
+bindTheme(loginSubtitle, "TextColor3", "TextLow")
+
+-- ========== BOTÃO DISCORD (CORRIGIDO) ==========
+local DiscordBtn = create("TextButton", {
+	Name = "DiscordBtn",
+	Size = UDim2.fromOffset(26, 26),
+	Position = UDim2.new(1, -36, 0.5, -13),
+	BackgroundTransparency = 1,
+	Text = "💬",
+	Font = FONT_BODY,
+	TextSize = 15,
+	AutoButtonColor = false,
+	Parent = LoginTitlebar,
+})
+corner(DiscordBtn, 7)
+local discordIconImage = create("ImageLabel", {
+	Name = "DiscordIcon",
+	Size = UDim2.fromOffset(16, 16),
+	Position = UDim2.fromOffset(5, 5),
+	BackgroundTransparency = 1,
+	Image = CONFIG.Login.DiscordIcon,
+	ScaleType = Enum.ScaleType.Fit,
+	Visible = CONFIG.Login.DiscordIcon ~= "",
+	Parent = DiscordBtn,
+})
+if CONFIG.Login.DiscordIcon ~= "" then
+	DiscordBtn.Text = ""
+end
+local discordStroke = stroke(DiscordBtn, Theme.Accent, 1)
+discordStroke.Transparency = 1
+bindTheme(discordStroke, "Color", "Accent")
+
+-- Estado do botão
+local setLoginStatus
+local showDiscordManualLink
+local discordHovered = false
+local discordCopied = false
+
+-- Função que atualiza a aparência do botão (sem animar o Text)
+local function refreshDiscordButton(animate)
+	if discordCopied then
+		DiscordBtn.Text = "✓"
+		DiscordBtn.TextColor3 = Color3.fromRGB(0, 255, 0)
+		discordStroke.Color = Color3.fromRGB(0, 255, 0)
+		discordStroke.Transparency = 0
+	elseif discordHovered then
+		DiscordBtn.Text = "💬"
+		DiscordBtn.TextColor3 = Theme.AccentHi
+		discordStroke.Color = Theme.Accent
+		discordStroke.Transparency = 0
+	else
+		DiscordBtn.Text = "💬"
+		DiscordBtn.TextColor3 = Theme.TextMid
+		discordStroke.Transparency = 1
+	end
+
+	DiscordBtn.BackgroundColor3 = (discordCopied or discordHovered) and Theme.BgRow or Theme.BgPanel
+	DiscordBtn.BackgroundTransparency = (discordCopied or discordHovered) and 0.7 or 1
+
+	if CONFIG.Login.DiscordIcon ~= "" then
+		if discordCopied then
+			discordIconImage.Visible = false
+		else
+			DiscordBtn.Text = ""
+			discordIconImage.Visible = true
+			if CONFIG.Login.DiscordIconTint ~= false then
+				discordIconImage.ImageColor3 = discordHovered and Theme.AccentHi or Theme.TextMid
+			end
+		end
+	else
+		discordIconImage.Visible = false
+	end
+end
+
+addGlobalThemeRefresher(function(animate) refreshDiscordButton(animate) end)
+refreshDiscordButton(false)
+
+-- Eventos do botão
+DiscordBtn.MouseEnter:Connect(function()
+	discordHovered = true
+	refreshDiscordButton(true)
+end)
+DiscordBtn.MouseLeave:Connect(function()
+	discordHovered = false
+	refreshDiscordButton(true)
+end)
+DiscordBtn.MouseButton1Click:Connect(function()
+	safeCall("Discord.OpenModal", function()
+		if CONFIG.Login.DiscordInvite ~= "" then
+			if showDiscordManualLink then
+				showDiscordManualLink()
+			end
+		end
+	end)
+end)
+
+-- Corpo do Login
+local loginBody = create("Frame", {
+	Size = UDim2.new(1, -40, 1, -62),
+	Position = UDim2.fromOffset(20, 54),
+	BackgroundTransparency = 1,
+	Parent = LoginFrame,
+})
+
+local function createLoginLabel(text, y)
+	local lbl = create("TextLabel", {
+		Size = UDim2.new(1, 0, 0, 12),
+		Position = UDim2.fromOffset(0, y),
+		BackgroundTransparency = 1,
+		Text = string.upper(text),
+		Font = FONT_MONO,
+		TextSize = 9,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		Parent = loginBody,
+	})
+	bindTheme(lbl, "TextColor3", "TextLow")
+	return lbl
+end
+
+local function createLoginBox(y, text, placeholder)
+	local box = create("TextBox", {
+		Size = UDim2.new(1, 0, 0, 34),
+		Position = UDim2.fromOffset(0, y),
+		BackgroundTransparency = 0,
+		Text = text or "",
+		PlaceholderText = placeholder or "",
+		ClearTextOnFocus = false,
+		Font = FONT_BODY_MED,
+		TextSize = 12,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		BorderSizePixel = 0,
+		Parent = loginBody,
+	})
+	bindTheme(box, "BackgroundColor3", "BgRow")
+	bindTheme(box, "TextColor3", "TextHi")
+	bindTheme(box, "PlaceholderColor3", "TextLow")
+	corner(box, 8)
+	create("UIPadding", { PaddingLeft = UDim.new(0, 10), PaddingRight = UDim.new(0, 10), Parent = box })
+	return box
+end
+
+createLoginLabel("Username", 0)
+local usernameBox = createLoginBox(16, CONFIG.Login.Username, "Username")
+
+createLoginLabel("Token", 58)
+local tokenBox = createLoginBox(74, "", "Token")
+
+-- Status do login
+local loginStatusIsError = false
+local loginStatus = create("TextLabel", {
+	Size = UDim2.new(1, 0, 0, 14),
+	Position = UDim2.fromOffset(0, 114),
+	BackgroundTransparency = 1,
+	Text = "digite o token para liberar o painel",
+	Font = FONT_MONO,
+	TextSize = 9,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	Parent = loginBody,
+})
+local function refreshLoginStatus()
+	loginStatus.TextColor3 = loginStatusIsError and Theme.Error or Theme.TextLow
+end
+addGlobalThemeRefresher(refreshLoginStatus)
+refreshLoginStatus()
+
+local discordModal = create("TextButton", {
+	Name = "DiscordCopyModal",
+	Size = UDim2.fromScale(1, 1),
+	BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+	BackgroundTransparency = 1,
+	BorderSizePixel = 0,
+	Text = "",
+	AutoButtonColor = false,
+	Active = true,
+	Visible = false,
+	ZIndex = 20,
+	Parent = LoginFrame,
+})
+
+local discordModalCard = create("Frame", {
+	AnchorPoint = Vector2.new(0.5, 0.5),
+	Size = UDim2.new(1, -58, 0, 132),
+	Position = UDim2.fromScale(0.5, 0.5),
+	BackgroundTransparency = SURFACE_GLASS_TRANSPARENCY,
+	BorderSizePixel = 0,
+	Active = true,
+	ZIndex = 21,
+	Parent = discordModal,
+})
+bindTheme(discordModalCard, "BackgroundColor3", "BgPanel")
+corner(discordModalCard, 10)
+local discordModalStroke = stroke(discordModalCard, Theme.Line, 1)
+bindTheme(discordModalStroke, "Color", "Line")
+
+local discordModalTitle = create("TextLabel", {
+	Size = UDim2.new(1, -62, 0, 18),
+	Position = UDim2.fromOffset(14, 12),
+	BackgroundTransparency = 1,
+	Text = "Discord",
+	Font = FONT_BODY_BOLD,
+	TextSize = 13,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	ZIndex = 22,
+	Parent = discordModalCard,
+})
+bindTheme(discordModalTitle, "TextColor3", "TextHi")
+
+local modalCloseButton = create("TextButton", {
+	Size = UDim2.fromOffset(24, 24),
+	Position = UDim2.new(1, -34, 0, 8),
+	BackgroundTransparency = 1,
+	Text = "X",
+	Font = FONT_BODY_BOLD,
+	TextSize = 11,
+	AutoButtonColor = false,
+	BorderSizePixel = 0,
+	ZIndex = 22,
+	Parent = discordModalCard,
+})
+bindTheme(modalCloseButton, "TextColor3", "TextLow")
+
+local discordModalHint = create("TextLabel", {
+	Size = UDim2.new(1, -28, 0, 14),
+	Position = UDim2.fromOffset(14, 31),
+	BackgroundTransparency = 1,
+	Text = "link selecionado para copiar",
+	Font = FONT_MONO,
+	TextSize = 9,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	ZIndex = 22,
+	Parent = discordModalCard,
+})
+bindTheme(discordModalHint, "TextColor3", "TextLow")
+
+local discordLinkBox = create("TextBox", {
+	Size = UDim2.new(1, -28, 0, 34),
+	Position = UDim2.fromOffset(14, 55),
+	BackgroundTransparency = 0,
+	Text = CONFIG.Login.DiscordInvite,
+	ClearTextOnFocus = false,
+	Font = FONT_BODY_MED,
+	TextSize = 11,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	BorderSizePixel = 0,
+	ZIndex = 22,
+	Parent = discordModalCard,
+})
+bindTheme(discordLinkBox, "BackgroundColor3", "BgRow")
+bindTheme(discordLinkBox, "TextColor3", "TextHi")
+corner(discordLinkBox, 8)
+create("UIPadding", { PaddingLeft = UDim.new(0, 10), PaddingRight = UDim.new(0, 10), Parent = discordLinkBox })
+
+local discordModalStatus = create("TextLabel", {
+	Size = UDim2.new(1, -126, 0, 28),
+	Position = UDim2.fromOffset(14, 94),
+	BackgroundTransparency = 1,
+	Text = "fecha em 4 segundos",
+	Font = FONT_MONO,
+	TextSize = 9,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	TextYAlignment = Enum.TextYAlignment.Center,
+	ZIndex = 22,
+	Parent = discordModalCard,
+})
+bindTheme(discordModalStatus, "TextColor3", "TextLow")
+
+local modalCopyButton = create("TextButton", {
+	Size = UDim2.fromOffset(90, 28),
+	Position = UDim2.new(1, -104, 1, -38),
+	BackgroundTransparency = 0,
+	Text = "Copiar",
+	Font = FONT_BODY_BOLD,
+	TextSize = 11,
+	AutoButtonColor = false,
+	BorderSizePixel = 0,
+	ZIndex = 22,
+	Parent = discordModalCard,
+})
+bindTheme(modalCopyButton, "BackgroundColor3", "AccentDim")
+bindTheme(modalCopyButton, "TextColor3", "TextHi")
+corner(modalCopyButton, 8)
+
+local discordManualToken = 0
+
+local function focusDiscordModalLink()
+	pcall(function()
+		discordLinkBox:CaptureFocus()
+		discordLinkBox.SelectionStart = 1
+		discordLinkBox.CursorPosition = #discordLinkBox.Text + 1
+	end)
+end
+
+local function hideDiscordModal(resetStatus)
+	discordManualToken += 1
+	discordModal.Visible = false
+	discordCopied = false
+	modalCopyButton.Text = "Copiar"
+	refreshDiscordButton(false)
+
+	if resetStatus then
+		setLoginStatus("digite o token para liberar o painel", false)
+	end
+end
+
+local function scheduleDiscordModalHide()
+	discordManualToken += 1
+	local token = discordManualToken
+
+	task.delay(4, function()
+		if token ~= discordManualToken then
+			return
+		end
+
+		discordModal.Visible = false
+		discordCopied = false
+		modalCopyButton.Text = "Copiar"
+		refreshDiscordButton(false)
+		setLoginStatus("digite o token para liberar o painel", false)
+	end)
+end
+
+local function tryCopyDiscordModalLink()
+	local copied = false
+	local clipboardFn = setclipboard or toclipboard
+
+	if type(clipboardFn) == "function" then
+		copied = pcall(function()
+			clipboardFn(CONFIG.Login.DiscordInvite)
+		end)
+	end
+
+	focusDiscordModalLink()
+
+	if copied then
+		discordModalStatus.Text = "copiado"
+		modalCopyButton.Text = "Copiado"
+		setLoginStatus("link copiado", false)
+	else
+		discordModalStatus.Text = "use Ctrl+C agora"
+		modalCopyButton.Text = "Ctrl+C"
+		setLoginStatus("link selecionado para copiar", false)
+	end
+
+	scheduleDiscordModalHide()
+	return copied
+end
+
+function showDiscordManualLink()
+	discordCopied = false
+	discordLinkBox.Text = CONFIG.Login.DiscordInvite
+	discordModalStatus.Text = "fecha em 4 segundos"
+	modalCopyButton.Text = "Copiar"
+	discordModal.Visible = true
+	refreshDiscordButton(false)
+	setLoginStatus("link selecionado para copiar", false)
+
+	task.defer(focusDiscordModalLink)
+	scheduleDiscordModalHide()
+end
+
+modalCopyButton.MouseButton1Click:Connect(function()
+	safeCall("Discord.Copy", function()
+		discordCopied = tryCopyDiscordModalLink()
+		refreshDiscordButton(false)
+	end)
+end)
+
+modalCloseButton.MouseButton1Click:Connect(function()
+	safeCall("Discord.Close", hideDiscordModal, true)
+end)
+
+discordModal.MouseButton1Click:Connect(function()
+	safeCall("Discord.CloseOutside", hideDiscordModal, true)
+end)
+
+-- Botão Entrar
+local loginButton = create("TextButton", {
+	Size = UDim2.new(1, 0, 0, 34),
+	Position = UDim2.fromOffset(0, 136),
+	BackgroundTransparency = 0,
+	Text = "Entrar",
+	Font = FONT_BODY_BOLD,
+	TextSize = 12,
+	AutoButtonColor = false,
+	BorderSizePixel = 0,
+	Parent = loginBody,
+})
+bindTheme(loginButton, "BackgroundColor3", "AccentDim")
+bindTheme(loginButton, "TextColor3", "TextHi")
+corner(loginButton, 8)
+
+local function centerLogin()
+	LoginFrame.Position = UDim2.fromScale(0.5, 0.5)
+end
+
+local function showLoginCentered()
+	setInterfaceEnabled(true)
+	Panel.Visible = false
+	LoginFrame.Visible = true
+	centerLogin()
+	task.defer(centerLogin)
+	task.delay(0.05, centerLogin)
+	task.delay(0.25, centerLogin)
+end
+
+function setLoginStatus(text, isError)
+	loginStatus.Text = text
+	loginStatusIsError = isError == true
+	refreshLoginStatus()
+end
+
+local function tryLogin()
+	local userOk = usernameBox.Text == CONFIG.Login.Username
+	local tokenOk = tokenBox.Text == CONFIG.Login.Token
+	if userOk and tokenOk then
+		AppState.isLoggedIn = true
+		LoginFrame.Visible = false
+		setLoginStatus("acesso liberado", false)
+		showPanelCentered()
+	else
+		setLoginStatus("username ou token invalido", true)
+		tween(LoginFrame, { Position = UDim2.new(0.5, -6, 0.5, 0) }, 0.05)
+		task.delay(0.06, centerLogin)
+	end
+end
+
+loginButton.MouseButton1Click:Connect(function()
+	safeCall("Login.Submit", tryLogin)
+end)
+tokenBox.FocusLost:Connect(function(enterPressed)
+	if enterPressed then
+		safeCall("Login.Enter", tryLogin)
+	end
+end)
+
+-- ============================================================
+-- 10. TITLEBAR DO PAINEL PRINCIPAL
+-- ============================================================
+local Titlebar = create("Frame", {
+	Name = "Titlebar",
+	Size = UDim2.new(1, 0, 0, 42),
+	BackgroundTransparency = PANEL_GLASS_TRANSPARENCY,
+	BorderSizePixel = 0,
+	Active = true,
+	Parent = Panel,
+})
+bindTheme(Titlebar, "BackgroundColor3", "BgTitlebar")
+corner(Titlebar, 12)
+local titlebarLine = create("Frame", {
+	Size = UDim2.new(1, 0, 0, 1),
+	Position = UDim2.new(0, 0, 1, -1),
+	Visible = false,
+	BorderSizePixel = 0,
+	Parent = Titlebar,
+})
+bindTheme(titlebarLine, "BackgroundColor3", "Line")
+
+-- Área de arraste
+local DragHandle = create("TextButton", {
+	Name = "DragHandle",
+	Size = UDim2.new(1, -78, 1, 0),
+	Position = UDim2.fromOffset(0, 0),
+	BackgroundTransparency = 1,
+	Text = "",
+	AutoButtonColor = false,
+	ZIndex = 10,
+	Parent = Titlebar,
+})
+
+-- Marca do painel
+local BrandMark = create("Frame", {
+	Size = UDim2.fromOffset(20, 20),
+	Position = UDim2.fromOffset(14, 11),
+	BackgroundTransparency = 1,
+	Parent = Titlebar,
+})
+local brandCircle = create("Frame", {
+	Size = UDim2.fromScale(1, 1),
+	BorderSizePixel = 0,
+	ClipsDescendants = true,
+	Parent = BrandMark,
+})
+bindTheme(brandCircle, "BackgroundColor3", "AccentHi")
+corner(brandCircle, 10)
+local brandImage = create("ImageLabel", {
+	Size = UDim2.new(1, -2, 1, -2),
+	Position = UDim2.fromOffset(1, 1),
+	BackgroundTransparency = 1,
+	Image = CONFIG.Brand.LogoImage,
+	ScaleType = Enum.ScaleType.Crop,
+	Visible = CONFIG.Brand.LogoImage ~= "",
+	Parent = brandCircle,
+})
+corner(brandImage, 9)
+local brandText = create("TextLabel", {
+	Size = UDim2.fromScale(1, 1),
+	BackgroundTransparency = 1,
+	Text = CONFIG.Brand.LogoText,
+	Font = FONT_MONO,
+	TextSize = 11,
+	Visible = CONFIG.Brand.LogoImage == "",
+	Parent = brandCircle,
+})
+bindTheme(brandText, "TextColor3", "BgPanel")
+
+local titleLabel = create("TextLabel", {
+	Size = UDim2.fromOffset(220, 16),
+	Position = UDim2.fromOffset(42, CONFIG.Brand.Subtitle ~= "" and 6 or 13),
+	BackgroundTransparency = 1,
+	Text = CONFIG.Brand.Title,
+	Font = FONT_BODY_BOLD,
+	TextSize = 13,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	TextYAlignment = Enum.TextYAlignment.Center,
+	Parent = Titlebar,
+})
+bindTheme(titleLabel, "TextColor3", "TextHi")
+local subLabel = create("TextLabel", {
+	Size = UDim2.fromOffset(220, 12),
+	Position = UDim2.fromOffset(42, 22),
+	BackgroundTransparency = 1,
+	Text = CONFIG.Brand.Subtitle,
+	Font = FONT_MONO,
+	TextSize = 9,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	Visible = CONFIG.Brand.Subtitle ~= "",
+	Parent = Titlebar,
+})
+bindTheme(subLabel, "TextColor3", "TextLow")
+
+-- Botão Fechar
+local CloseBtn = create("TextButton", {
+	Name = "CloseBtn",
+	Size = UDim2.fromOffset(26, 26),
+	Position = UDim2.new(1, -36, 0.5, -13),
+	BackgroundTransparency = 1,
+	Text = "x",
+	Font = FONT_BODY_BOLD,
+	TextSize = 14,
+	AutoButtonColor = false,
+	Parent = Titlebar,
+})
+corner(CloseBtn, 7)
+local closeHovered = false
+local function refreshCloseButton(animate)
+	applyProps(CloseBtn, {
+		BackgroundColor3 = Theme.BgRow,
+		BackgroundTransparency = closeHovered and 0.7 or 1,
+		TextColor3 = closeHovered and Theme.TextHi or Theme.TextMid,
+	}, animate)
+end
+addGlobalThemeRefresher(refreshCloseButton)
+refreshCloseButton(false)
+CloseBtn.MouseEnter:Connect(function() closeHovered = true; refreshCloseButton(true) end)
+CloseBtn.MouseLeave:Connect(function() closeHovered = false; refreshCloseButton(true) end)
+CloseBtn.MouseButton1Click:Connect(function() setInterfaceEnabled(false) end)
+
+-- Botão Configurações (abre a view Settings)
+local SettingsBtn = create("TextButton", {
+	Name = "SettingsBtn",
+	Size = UDim2.fromOffset(26, 26),
+	Position = UDim2.new(1, -68, 0.5, -13),
+	BackgroundTransparency = 1,
+	Text = "⚙",
+	Font = FONT_BODY_MED,
+	TextSize = 15,
+	AutoButtonColor = false,
+	Parent = Titlebar,
+})
+corner(SettingsBtn, 7)
+local settingsStroke = stroke(SettingsBtn, Theme.Accent, 1)
+settingsStroke.Transparency = 1
+bindTheme(settingsStroke, "Color", "Accent")
+
+-- ============================================================
+-- 11. BODY, SIDEBAR E CONTENT
+-- ============================================================
+local Body = create("Frame", {
+	Name = "Body",
+	Size = UDim2.new(1, 0, 1, -42),
+	Position = UDim2.fromOffset(0, 42),
+	BackgroundTransparency = 1,
+	Parent = Panel,
+})
+
+-- Sidebar
+local Sidebar = create("Frame", {
+	Name = "Sidebar",
+	Size = UDim2.new(0, SIDEBAR_WIDTH, 1, 0),
+	BackgroundTransparency = SIDEBAR_GLASS_TRANSPARENCY,
+	BorderSizePixel = 0,
+	Parent = Body,
+})
+bindTheme(Sidebar, "BackgroundColor3", "BgSidebar")
+corner(Sidebar, 12)
+local sidebarLine = create("Frame", {
+	Size = UDim2.new(0, 1, 1, 0),
+	Position = UDim2.new(1, -1, 0, 0),
+	Visible = false,
+	BorderSizePixel = 0,
+	Parent = Sidebar,
+})
+bindTheme(sidebarLine, "BackgroundColor3", "Line")
+
+-- Lista de navegação
+local NavList = create("Frame", {
+	Name = "NavList",
+	Size = UDim2.new(1, -20, 0, 160),
+	Position = UDim2.fromOffset(10, 12),
+	BackgroundTransparency = 1,
+	Parent = Sidebar,
+})
+create("UIListLayout", { Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder, Parent = NavList })
+
+-- Rodapé com perfil
+local ProfileFooter = create("Frame", {
+	Name = "ProfileFooter",
+	Size = UDim2.new(1, -20, 0, 52),
+	Position = UDim2.new(0, 10, 1, -64),
+	BackgroundTransparency = 1,
+	Parent = Sidebar,
+})
+local profileLine = create("Frame", {
+	Size = UDim2.new(1, 0, 0, 1),
+	Position = UDim2.fromOffset(0, 0),
+	BackgroundTransparency = 1,
+	Visible = false,
+	BorderSizePixel = 0,
+	Parent = ProfileFooter,
+})
+bindTheme(profileLine, "BackgroundColor3", "Line")
+
+local AvatarFrame = create("Frame", {
+	Size = UDim2.fromOffset(38, 38),
+	Position = UDim2.fromOffset(0, 10),
+	BackgroundTransparency = SURFACE_GLASS_TRANSPARENCY,
+	BorderSizePixel = 0,
+	Parent = ProfileFooter,
+})
+bindTheme(AvatarFrame, "BackgroundColor3", "BgRow")
+corner(AvatarFrame, 19)
+local avatarStroke = stroke(AvatarFrame, Theme.Accent, 1.5)
+bindTheme(avatarStroke, "Color", "Accent")
+
+local AvatarImage = create("ImageLabel", {
+	Size = UDim2.new(1, -4, 1, -4),
+	Position = UDim2.fromOffset(2, 2),
+	BackgroundTransparency = 1,
+	Image = "",
+	Parent = AvatarFrame,
+})
+corner(AvatarImage, 17)
+task.spawn(function()
+	local ok, content = pcall(function()
+		return Players:GetUserThumbnailAsync(LocalPlayer.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size100x100)
+	end)
+	if ok and content and AvatarImage.Parent then
+		AvatarImage.Image = content
+	end
+end)
+
+local nameLabel = create("TextLabel", {
+	Size = UDim2.new(1, -50, 0, 16),
+	Position = UDim2.fromOffset(48, 14),
+	BackgroundTransparency = 1,
+	Text = LocalPlayer.DisplayName ~= LocalPlayer.Name and LocalPlayer.DisplayName or LocalPlayer.Name,
+	Font = FONT_BODY_BOLD,
+	TextSize = 12.5,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	TextTruncate = Enum.TextTruncate.AtEnd,
+	Parent = ProfileFooter,
+})
+bindTheme(nameLabel, "TextColor3", "TextHi")
+
+local tagLabel = create("TextLabel", {
+	Size = UDim2.new(1, -50, 0, 14),
+	Position = UDim2.fromOffset(48, 30),
+	BackgroundTransparency = 1,
+	Text = "@" .. LocalPlayer.Name,
+	Font = FONT_MONO,
+	TextSize = 10,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	TextTruncate = Enum.TextTruncate.AtEnd,
+	Parent = ProfileFooter,
+})
+bindTheme(tagLabel, "TextColor3", "TextLow")
+
+-- Content (área principal)
+local Content = create("Frame", {
+	Name = "Content",
+	Size = UDim2.new(1, -SIDEBAR_WIDTH, 1, 0),
+	Position = UDim2.fromOffset(SIDEBAR_WIDTH, 0),
+	BackgroundTransparency = 1,
+	Parent = Body,
+})
+
+-- Cabeçalho do conteúdo
+local ContentHeader = create("Frame", {
+	Name = "ContentHeader",
+	Size = UDim2.new(1, 0, 0, 50),
+	BackgroundTransparency = 1,
+	Parent = Content,
+})
+local headerLine = create("Frame", {
+	Size = UDim2.new(1, -40, 0, 1),
+	Position = UDim2.fromOffset(20, 49),
+	BackgroundTransparency = 1,
+	Visible = false,
+	BorderSizePixel = 0,
+	Parent = ContentHeader,
+})
+bindTheme(headerLine, "BackgroundColor3", "Line")
+
+local ContentTitle = create("TextLabel", {
+	Size = UDim2.new(1, -40, 0, 18),
+	Position = UDim2.fromOffset(20, 10),
+	BackgroundTransparency = 1,
+	Text = "Main",
+	Font = FONT_BODY_BOLD,
+	TextSize = 15,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	Parent = ContentHeader,
+})
+bindTheme(ContentTitle, "TextColor3", "TextHi")
+
+local ContentDesc = create("TextLabel", {
+	Size = UDim2.new(1, -40, 0, 14),
+	Position = UDim2.fromOffset(20, 29),
+	BackgroundTransparency = 1,
+	Text = "",
+	Font = FONT_BODY,
+	TextSize = 11,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	TextTruncate = Enum.TextTruncate.AtEnd,
+	Parent = ContentHeader,
+})
+bindTheme(ContentDesc, "TextColor3", "TextMid")
+
+-- Scrollable content
+local ContentScroll = create("ScrollingFrame", {
+	Name = "ContentScroll",
+	Size = UDim2.new(1, 0, 1, -50),
+	Position = UDim2.fromOffset(0, 50),
+	BackgroundTransparency = 1,
+	BorderSizePixel = 0,
+	ScrollBarThickness = 3,
+	CanvasSize = UDim2.new(0, 0, 0, 0),
+	AutomaticCanvasSize = Enum.AutomaticSize.Y,
+	Parent = Content,
+})
+bindTheme(ContentScroll, "ScrollBarImageColor3", "Line")
+create("UIPadding", {
+	PaddingLeft = UDim.new(0, 20),
+	PaddingRight = UDim.new(0, 20),
+	PaddingTop = UDim.new(0, 8),
+	PaddingBottom = UDim.new(0, 16),
+	Parent = ContentScroll,
+})
+create("UIListLayout", { Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder, Parent = ContentScroll })
+
+-- ============================================================
+-- 12. ITENS DE NAVEGAÇÃO
+-- ============================================================
+local navButtons = {}
+local noticeToken = 0
+
+local function showNotice(text)
+	noticeToken = noticeToken + 1
+	local token = noticeToken
+	ContentDesc.Text = text
+	task.delay(2, function()
+		if token ~= noticeToken then return end
+		local meta = ViewMeta and ViewMeta[AppState.activeView]
+		if meta then ContentDesc.Text = meta.desc end
+	end)
+end
+
+local function refreshNavVisuals(animate)
+	for name, refs in pairs(navButtons) do
+		local active = AppState.activeView == name
+		applyProps(refs.button, {
+			BackgroundColor3 = Theme.AccentWash,
+			BackgroundTransparency = active and SURFACE_GLASS_TRANSPARENCY or 1,
+		}, animate)
+		applyProps(refs.label, { TextColor3 = active and Theme.AccentHi or Theme.TextMid }, animate)
+		if refs.icon then
+			if refs.icon:IsA("ImageLabel") then
+				local imageProps = {
+					ImageTransparency = active and 0 or 0.18,
+				}
+				if refs.iconTint then
+					imageProps.ImageColor3 = active and Theme.AccentHi or Theme.TextMid
+				end
+				applyProps(refs.icon, imageProps, animate)
+			else
+				applyProps(refs.icon, { TextColor3 = active and Theme.AccentHi or Theme.TextMid }, animate)
+			end
+		end
+		refs.bar.Visible = active
+		refs.stroke.Transparency = active and 0 or 1
+		refs.stroke.Color = Theme.Accent
+	end
+	local settingsActive = AppState.activeView == "Settings"
+	applyProps(SettingsBtn, {
+		BackgroundColor3 = Theme.AccentWash,
+		BackgroundTransparency = settingsActive and SURFACE_GLASS_TRANSPARENCY or 1,
+		TextColor3 = settingsActive and Theme.AccentHi or Theme.TextMid,
+	}, animate)
+	settingsStroke.Transparency = settingsActive and 0 or 1
+	settingsStroke.Color = Theme.Accent
+end
+addGlobalThemeRefresher(refreshNavVisuals)
+
+local function createNavItem(name, order, displayName)
+	local navConfig = CONFIG.Navigation and CONFIG.Navigation[name] or {}
+	local navImage = navConfig.Image or ""
+	local hasImage = navImage ~= ""
+	local labelX = hasImage and 34 or 14
+	local labelPadding = hasImage and 38 or 18
+
+	local btn = create("TextButton", {
+		Name = name .. "Nav",
+		Size = UDim2.new(1, 0, 0, 36),
+		BackgroundTransparency = 1,
+		Text = "",
+		AutoButtonColor = false,
+		LayoutOrder = order,
+		Parent = NavList,
+	})
+	corner(btn, 7)
+
+	local bar = create("Frame", {
+		Size = UDim2.fromOffset(3, 14),
+		Position = UDim2.fromOffset(-10, 11),
+		Visible = false,
+		BorderSizePixel = 0,
+		Parent = btn,
+	})
+	bindTheme(bar, "BackgroundColor3", "Accent")
+	corner(bar, 2)
+
+	local icon = nil
+	if hasImage then
+		icon = create("ImageLabel", {
+			Size = UDim2.fromOffset(18, 18),
+			Position = UDim2.fromOffset(10, 9),
+			BackgroundTransparency = 1,
+			Image = navImage,
+			ImageTransparency = 0.18,
+			ScaleType = Enum.ScaleType.Fit,
+			Parent = btn,
+		})
+	end
+
+	local label = create("TextLabel", {
+		Size = UDim2.new(1, -labelPadding, 0, 18),
+		Position = UDim2.fromOffset(labelX, 9),
+		BackgroundTransparency = 1,
+		Text = displayName or name,
+		Font = FONT_BODY_MED,
+		TextSize = 12.5,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		Parent = btn,
+	})
+	local navStroke = stroke(btn, Theme.Accent, 1)
+	navStroke.Transparency = 1
+
+	navButtons[name] = {
+		button = btn,
+		bar = bar,
+		icon = icon,
+		iconTint = navConfig.Tint ~= false,
+		label = label,
+		stroke = navStroke,
+	}
+	return btn
+end
+
+local MainHubBtn = createNavItem("MainHub", 1, "Main")
+local VisualsBtn = createNavItem("Visuals", 2)
+local CombatBtn = createNavItem("Combat", 3)
+local ConsoleBtn = createNavItem("Console", 4)
+
+-- ============================================================
+-- 13. COMPONENTES REUTILIZÁVEIS PARA AS VIEWS
+-- ============================================================
+local function clearContent()
+	disconnectViewConnections()
+	for _, child in ipairs(ContentScroll:GetChildren()) do
+		if not child:IsA("UIListLayout") and not child:IsA("UIPadding") then
+			child:Destroy()
+		end
+	end
+end
+
+local function sectionLabel(text, order)
+	local lbl = create("TextLabel", {
+		Size = UDim2.new(1, 0, 0, 22),
+		BackgroundTransparency = 1,
+		Text = string.upper(text),
+		Font = FONT_MONO,
+		TextSize = 9,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		LayoutOrder = order,
+		Parent = ContentScroll,
+	})
+	bindTheme(lbl, "TextColor3", "TextLow")
+	return lbl
+end
+
+local function paintRow(row, hovered, animate)
+	applyProps(row, {
+		BackgroundColor3 = hovered and Theme.BgRowHover or Theme.BgRow,
+	}, animate)
+end
+
+local featureActions = {
+	aimbot = function(on) Cheat.setAimbot(on) end,
+	tracers = function(on) Cheat.setTracers(on) end,
+	hitbox = function(on) Cheat.setHitbox(on) end,
+	circle = function(on)
+		Cheat.setCircle(on)
+		if on then
+			Cheat.setCircleRadius(AppState.sliders.circleRadius or 80)
+		end
+	end,
+	highlight = function(on) Cheat.setHighlight(on) end,
+	teamCheckAimbot = function(on) Cheat.setTeamCheckAimbot(on) end,
+}
+
+local function setFeatureToggle(id, enabled)
+	if not id then return end
+	AppState.toggles[id] = enabled == true
+
+	local action = featureActions[id]
+	if action then
+		safeCall("Toggle." .. tostring(id), action, AppState.toggles[id])
+	end
+end
+
+local function createRow(opts)
+	local row = create("Frame", {
+		Size = UDim2.new(1, 0, 0, 48),
+		LayoutOrder = opts.order,
+		BackgroundTransparency = SURFACE_GLASS_TRANSPARENCY,
+		BorderSizePixel = 0,
+		Parent = ContentScroll,
+	})
+	corner(row, 8)
+
+	local hovered = false
+	paintRow(row, hovered, false)
+	addViewThemeRefresher(function(animate) paintRow(row, hovered, animate) end)
+
+	local rowStroke = stroke(row, Theme.Line, 1)
+	bindTheme(rowStroke, "Color", "Line")
+
+	row.MouseEnter:Connect(function() hovered = true; paintRow(row, hovered, true) end)
+	row.MouseLeave:Connect(function() hovered = false; paintRow(row, hovered, true) end)
+
+	-- Ícone
+	local iconBg = create("Frame", {
+		Size = UDim2.fromOffset(28, 28),
+		Position = UDim2.fromOffset(10, 10),
+		BorderSizePixel = 0,
+		Visible = false,
+		Parent = row,
+	})
+	bindTheme(iconBg, "BackgroundColor3", opts.muted and "MutedWash" or "AccentWash")
+	corner(iconBg, 7)
+	local iconStroke = stroke(iconBg, Theme.Accent, 1)
+	bindTheme(iconStroke, "Color", opts.muted and "Muted" or "Accent")
+
+	if opts.imageId then
+		local img = create("ImageLabel", {
+			Size = UDim2.fromScale(1, 1),
+			BackgroundTransparency = 1,
+			Image = opts.imageId,
+			ScaleType = Enum.ScaleType.Fit,
+			Parent = iconBg,
+		})
+	else
+		local iconText = create("TextLabel", {
+			Size = UDim2.fromScale(1, 1),
+			BackgroundTransparency = 1,
+			Text = opts.icon or "•",
+			Font = FONT_BODY,
+			TextSize = 13,
+			Parent = iconBg,
+		})
+		bindTheme(iconText, "TextColor3", opts.muted and "MutedText" or "AccentHi")
+	end
+
+	-- Títulos
+	local titleLabel = create("TextLabel", {
+		Size = UDim2.new(1, -156, 0, 14),
+		Position = UDim2.fromOffset(14, 8),
+		BackgroundTransparency = 1,
+		Text = opts.title,
+		Font = FONT_BODY_BOLD,
+		TextSize = 12.5,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		TextTruncate = Enum.TextTruncate.AtEnd,
+		Parent = row,
+	})
+	bindTheme(titleLabel, "TextColor3", "TextHi")
+
+	local subLabel = create("TextLabel", {
+		Size = UDim2.new(1, -156, 0, 14),
+		Position = UDim2.fromOffset(14, 25),
+		BackgroundTransparency = 1,
+		Text = opts.sub or "",
+		Font = FONT_MONO,
+		TextSize = 10,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		TextTruncate = Enum.TextTruncate.AtEnd,
+		Parent = row,
+	})
+	bindTheme(subLabel, "TextColor3", "TextMid")
+
+	-- Tipos de controle
+	if opts.kind == "toggle" then
+		if opts.id and AppState.toggles[opts.id] == nil then
+			AppState.toggles[opts.id] = opts.default == true
+		end
+		if opts.id and AppState.keybinds[opts.id] == nil then
+			AppState.keybinds[opts.id] = Enum.KeyCode.Unknown
+		end
+		if opts.id and opts.onToggle then
+			featureActions[opts.id] = opts.onToggle
+		end
+
+		local keyButton = nil
+		if opts.id then
+			keyButton = create("TextButton", {
+				Size = UDim2.fromOffset(52, 20),
+				Position = UDim2.new(1, -104, 0.5, -10),
+				Text = "",
+				Font = FONT_BODY_BOLD,
+				TextSize = 10,
+				TextTruncate = Enum.TextTruncate.AtEnd,
+				AutoButtonColor = false,
+				BorderSizePixel = 0,
+				Parent = row,
+			})
+			corner(keyButton, 10)
+
+			local function paintKeyButton(animate)
+				local waiting = AppState.waitingForKey == opts.id
+				applyProps(keyButton, {
+					Text = waiting and "..." or keyText(AppState.keybinds[opts.id]),
+					BackgroundColor3 = waiting and Theme.AccentDim or Theme.BgSwitchOff,
+					TextColor3 = waiting and Theme.AccentHi or Theme.TextMid,
+				}, animate)
+			end
+
+			addViewThemeRefresher(paintKeyButton)
+			paintKeyButton(false)
+
+			keyButton.MouseButton1Click:Connect(function()
+				AppState.waitingForKey = opts.id
+				rerenderActiveView(false)
+				showNotice("Pressione a tecla para " .. tostring(opts.title) .. ".")
+			end)
+		end
+
+		local switch = create("TextButton", {
+			Size = UDim2.fromOffset(36, 20),
+			Position = UDim2.new(1, -46, 0.5, -10),
+			Text = "",
+			AutoButtonColor = false,
+			BorderSizePixel = 0,
+			Parent = row,
+		})
+		corner(switch, 10)
+		local switchStroke = stroke(switch, Theme.Line, 1)
+		local knob = create("Frame", {
+			Size = UDim2.fromOffset(14, 14),
+			BorderSizePixel = 0,
+			Parent = switch,
+		})
+		corner(knob, 7)
+
+		local function getState()
+			if opts.id then return AppState.toggles[opts.id] == true end
+			return opts.default == true
+		end
+
+		local function paintToggle(animate)
+			local enabled = getState()
+			applyProps(switch, {
+				BackgroundColor3 = enabled and Theme.AccentDim or Theme.BgSwitchOff,
+			}, animate)
+			applyProps(knob, {
+				Position = enabled and UDim2.fromOffset(20, 3) or UDim2.fromOffset(3, 3),
+				BackgroundColor3 = enabled and Theme.AccentHi or Theme.KnobOff,
+			}, animate)
+			switchStroke.Color = enabled and Theme.Accent or Theme.Line
+		end
+		addViewThemeRefresher(paintToggle)
+		paintToggle(false)
+
+		switch.MouseButton1Click:Connect(function()
+			local nextState = not getState()
+			if opts.id then
+				setFeatureToggle(opts.id, nextState)
+			end
+			paintToggle(true)
+			if not opts.id and opts.onToggle then
+				safeCall("Toggle." .. tostring(opts.id or opts.title), opts.onToggle, nextState)
+			end
+		end)
+
+	elseif opts.kind == "chevron" then
+		local chev = create("TextLabel", {
+			Size = UDim2.fromOffset(14, 14),
+			Position = UDim2.new(1, -26, 0.5, -7),
+			BackgroundTransparency = 1,
+			Text = ">",
+			Font = FONT_BODY_BOLD,
+			TextSize = 12,
+			Parent = row,
+		})
+		bindTheme(chev, "TextColor3", "TextLow")
+		local clickArea = create("TextButton", {
+			Size = UDim2.fromScale(1, 1),
+			BackgroundTransparency = 1,
+			Text = "",
+			AutoButtonColor = false,
+			Parent = row,
+		})
+		clickArea.MouseButton1Click:Connect(function()
+			if opts.onClick then
+				safeCall("Click." .. tostring(opts.title), opts.onClick)
+			else
+				showNotice("Esse submenu ainda nao foi configurado.")
+			end
+		end)
+
+	elseif opts.kind == "chip" then
+		local chip = create("Frame", {
+			Size = UDim2.fromOffset(64, 18),
+			Position = UDim2.new(1, -74, 0.5, -9),
+			BorderSizePixel = 0,
+			Parent = row,
+		})
+		bindTheme(chip, "BackgroundColor3", "AccentWash")
+		corner(chip, 9)
+		local chipStroke = stroke(chip, Theme.Accent, 1)
+		bindTheme(chipStroke, "Color", "Accent")
+		local chipText = create("TextLabel", {
+			Size = UDim2.fromScale(1, 1),
+			BackgroundTransparency = 1,
+			Text = opts.chipText or "",
+			Font = FONT_MONO,
+			TextSize = 9,
+			TextTruncate = Enum.TextTruncate.AtEnd,
+			Parent = chip,
+		})
+		bindTheme(chipText, "TextColor3", "AccentHi")
+	end
+
+	return row
+end
+
+local function createInfoRow(opts)
+	local valueWidth = opts.valueWidth or 128
+	local row = create("Frame", {
+		Size = UDim2.new(1, 0, 0, 48),
+		LayoutOrder = opts.order,
+		BackgroundTransparency = SURFACE_GLASS_TRANSPARENCY,
+		BorderSizePixel = 0,
+		Parent = ContentScroll,
+	})
+	corner(row, 8)
+
+	local hovered = false
+	paintRow(row, hovered, false)
+	addViewThemeRefresher(function(animate) paintRow(row, hovered, animate) end)
+
+	local rowStroke = stroke(row, Theme.Line, 1)
+	bindTheme(rowStroke, "Color", "Line")
+
+	row.MouseEnter:Connect(function() hovered = true; paintRow(row, hovered, true) end)
+	row.MouseLeave:Connect(function() hovered = false; paintRow(row, hovered, true) end)
+
+	local titleLabel = create("TextLabel", {
+		Size = UDim2.new(1, -(valueWidth + 36), 0, 14),
+		Position = UDim2.fromOffset(14, 8),
+		BackgroundTransparency = 1,
+		Text = opts.title,
+		Font = FONT_BODY_BOLD,
+		TextSize = 12.5,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		TextTruncate = Enum.TextTruncate.AtEnd,
+		Parent = row,
+	})
+	bindTheme(titleLabel, "TextColor3", "TextHi")
+
+	local subLabel = create("TextLabel", {
+		Size = UDim2.new(1, -(valueWidth + 36), 0, 14),
+		Position = UDim2.fromOffset(14, 25),
+		BackgroundTransparency = 1,
+		Text = opts.sub or "",
+		Font = FONT_MONO,
+		TextSize = 10,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		TextTruncate = Enum.TextTruncate.AtEnd,
+		Parent = row,
+	})
+	bindTheme(subLabel, "TextColor3", "TextMid")
+
+	local valueLabel = create("TextLabel", {
+		Size = UDim2.fromOffset(valueWidth, 24),
+		Position = UDim2.new(1, -(valueWidth + 10), 0.5, -12),
+		BorderSizePixel = 0,
+		Text = opts.value or "--",
+		Font = FONT_BODY_BOLD,
+		TextSize = opts.valueSize or 11,
+		TextTruncate = Enum.TextTruncate.AtEnd,
+		Parent = row,
+	})
+	bindTheme(valueLabel, "BackgroundColor3", "BgSwitchOff")
+	bindTheme(valueLabel, "TextColor3", "TextHi")
+	corner(valueLabel, 8)
+
+	return {
+		row = row,
+		title = titleLabel,
+		sub = subLabel,
+		value = valueLabel,
+	}
+end
+
+local function createSliderRow(opts)
+	local row = create("Frame", {
+		Size = UDim2.new(1, 0, 0, 62),
+		LayoutOrder = opts.order,
+		BackgroundTransparency = SURFACE_GLASS_TRANSPARENCY,
+		BorderSizePixel = 0,
+		Parent = ContentScroll,
+	})
+	bindTheme(row, "BackgroundColor3", "BgRow")
+	corner(row, 8)
+	local rowStroke = stroke(row, Theme.Line, 1)
+	bindTheme(rowStroke, "Color", "Line")
+
+	local titleLabel = create("TextLabel", {
+		Size = UDim2.new(1, -86, 0, 14),
+		Position = UDim2.fromOffset(12, 8),
+		BackgroundTransparency = 1,
+		Text = opts.title,
+		Font = FONT_BODY_BOLD,
+		TextSize = 12.5,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		TextTruncate = Enum.TextTruncate.AtEnd,
+		Parent = row,
+	})
+	bindTheme(titleLabel, "TextColor3", "TextHi")
+
+	local subLabel = create("TextLabel", {
+		Size = UDim2.new(1, -86, 0, 12),
+		Position = UDim2.fromOffset(12, 24),
+		BackgroundTransparency = 1,
+		Text = opts.sub or "",
+		Font = FONT_MONO,
+		TextSize = 10,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		TextTruncate = Enum.TextTruncate.AtEnd,
+		Parent = row,
+	})
+	bindTheme(subLabel, "TextColor3", "TextMid")
+
+	local valueLabel = create("TextLabel", {
+		Size = UDim2.fromOffset(62, 20),
+		Position = UDim2.new(1, -68, 0, 7),
+		Text = "",
+		Font = FONT_BODY_BOLD,
+		TextSize = 11,
+		BorderSizePixel = 0,
+		TextTransparency = 0,
+		Parent = row,
+	})
+	bindTheme(valueLabel, "BackgroundColor3", "BgSwitchOff")
+	bindTheme(valueLabel, "TextColor3", "TextHi")
+	corner(valueLabel, 9)
+
+	local sliderArea = create("TextButton", {
+		Size = UDim2.new(1, -24, 0, 26),
+		Position = UDim2.fromOffset(12, 34),
+		BackgroundTransparency = 1,
+		Text = "",
+		AutoButtonColor = false,
+		Parent = row,
+	})
+	local track = create("Frame", {
+		Size = UDim2.new(1, 0, 0, 6),
+		Position = UDim2.new(0, 0, 0.5, -3),
+		BorderSizePixel = 0,
+		Parent = sliderArea,
+	})
+	bindTheme(track, "BackgroundColor3", "BgSwitchOff")
+	corner(track, 3)
+
+	local fill = create("Frame", {
+		Size = UDim2.new(0, 0, 1, 0),
+		BorderSizePixel = 0,
+		Parent = track,
+	})
+	corner(fill, 3)
+
+	local handle = create("TextButton", {
+		Size = UDim2.fromOffset(16, 16),
+		Text = "",
+		AutoButtonColor = false,
+		BorderSizePixel = 0,
+		Parent = sliderArea,
+	})
+	corner(handle, 8)
+	local handleStroke = stroke(handle, Theme.BgPanel, 2)
+	bindTheme(handleStroke, "Color", "BgPanel")
+
+	local minValue = opts.min or 0
+	local maxValue = opts.max or 100
+	local step = opts.step or 1
+
+	if opts.id and AppState.sliders[opts.id] == nil then
+		AppState.sliders[opts.id] = opts.default or minValue
+	end
+
+	local function clampValue(value)
+		value = math.clamp(value, minValue, maxValue)
+		local steps = math.floor(((value - minValue) / step) + 0.5)
+		return math.clamp(minValue + steps * step, minValue, maxValue)
+	end
+
+	local function getValue()
+		if opts.id then return clampValue(AppState.sliders[opts.id]) end
+		return clampValue(opts.default or minValue)
+	end
+
+	local function setValue(value, fireCallback, animate)
+		value = clampValue(value)
+		if opts.id then AppState.sliders[opts.id] = value end
+		local pct = 0
+		if maxValue ~= minValue then pct = (value - minValue) / (maxValue - minValue) end
+
+		applyProps(fill, { Size = UDim2.new(pct, 0, 1, 0), BackgroundColor3 = Theme.AccentHi }, animate)
+		applyProps(handle, { Position = UDim2.new(pct, -8, 0.5, -8), BackgroundColor3 = Theme.TextHi }, animate)
+		valueLabel.Text = formatNumber(value, step)
+
+		if fireCallback and opts.onChange then
+			safeCall("Slider." .. tostring(opts.id or opts.title), opts.onChange, value)
+		end
+	end
+
+	local dragging = false
+
+	local function updateFromInput(input, fireCallback)
+		local width = sliderArea.AbsoluteSize.X
+		if width <= 0 then return end
+		local pct = math.clamp((input.Position.X - sliderArea.AbsolutePosition.X) / width, 0, 1)
+		setValue(minValue + pct * (maxValue - minValue), fireCallback, false)
+	end
+
+	addViewThemeRefresher(function() setValue(getValue(), false, false) end)
+
+	local function beginDrag(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			dragging = true
+			updateFromInput(input, true)
+		end
+	end
+
+	sliderArea.InputBegan:Connect(beginDrag)
+	handle.InputBegan:Connect(beginDrag)
+
+	trackViewConnection(UserInputService.InputEnded:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			dragging = false
+		end
+	end))
+
+	trackViewConnection(UserInputService.InputChanged:Connect(function(input)
+		if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+			updateFromInput(input, true)
+		end
+	end))
+
+	setValue(getValue(), false, false)
+	return row
+end
+
+function rerenderActiveView(animate)
+	local meta = ViewMeta and ViewMeta[AppState.activeView]
+	if not meta then
+		return
+	end
+
+	noticeToken += 1
+	ContentTitle.Text = meta.title
+	ContentDesc.Text = meta.desc
+	clearContent()
+	safeCall("View." .. AppState.activeView, meta.render)
+	refreshNavVisuals(animate == true)
+end
+
+-- ============================================================
+-- 14. VIEWS (MAINHUB, VISUALS, COMBAT, SETTINGS)
+-- ============================================================
+ViewMeta = {
+	MainHub = {
+		title = "Main",
+		desc = "Informacoes importantes do servidor.",
+		render = function()
+			sectionLabel("Servidor", 1)
+			local playersInfo = createInfoRow({ order = 2, title = "Jogadores", sub = "pessoas no servidor", value = "--" })
+			local pingInfo = createInfoRow({ order = 3, title = "Ping", sub = "latencia aproximada", value = "-- ms" })
+			local fpsInfo = createInfoRow({ order = 4, title = "FPS", sub = "desempenho do cliente", value = "--" })
+			local serverTypeInfo = createInfoRow({ order = 5, title = "Tipo de servidor", sub = "sessao atual", value = "--" })
+
+			sectionLabel("Jogo", 6)
+			local placeInfo = createInfoRow({ order = 7, title = "Place ID", sub = "identificador do mapa", value = tostring(game.PlaceId), valueWidth = 140 })
+			local versionInfo = createInfoRow({ order = 8, title = "Versao do place", sub = "publicacao carregada", value = tostring(game.PlaceVersion or 0) })
+			local jobInfo = createInfoRow({ order = 9, title = "Job ID", sub = "id curto do servidor", value = "--", valueWidth = 140 })
+			local sessionInfo = createInfoRow({ order = 10, title = "Tempo no painel", sub = "desde que o script iniciou", value = "00:00" })
+
+			sectionLabel("Jogador", 11)
+			local userInfo = createInfoRow({ order = 12, title = "Usuario", sub = "nome da conta", value = "@" .. LocalPlayer.Name, valueWidth = 140 })
+			local userIdInfo = createInfoRow({ order = 13, title = "User ID", sub = "identificador da conta", value = tostring(LocalPlayer.UserId), valueWidth = 140 })
+			local teamInfo = createInfoRow({ order = 14, title = "Time", sub = "equipe atual", value = "--" })
+			local accountInfo = createInfoRow({ order = 15, title = "Idade da conta", sub = "dias desde a criacao", value = tostring(LocalPlayer.AccountAge) .. " dias" })
+
+			local frameCount = 0
+			local lastFpsClock = os.clock()
+			local currentFps = 0
+
+			local function updateMainStats()
+				local playerCount = #Players:GetPlayers()
+				playersInfo.value.Text = tostring(playerCount) .. " / " .. tostring(Players.MaxPlayers)
+
+				local pingMs = getPingMs()
+				pingInfo.value.Text = pingMs and (tostring(pingMs) .. " ms") or "N/A"
+				fpsInfo.value.Text = currentFps > 0 and tostring(currentFps) or "--"
+
+				if game.PrivateServerId ~= "" then
+					serverTypeInfo.value.Text = "Privado"
+				elseif game.JobId == "" then
+					serverTypeInfo.value.Text = "Studio"
+				else
+					serverTypeInfo.value.Text = "Publico"
+				end
+
+				placeInfo.value.Text = tostring(game.PlaceId)
+				versionInfo.value.Text = tostring(game.PlaceVersion or 0)
+				jobInfo.value.Text = game.JobId ~= "" and shortText(game.JobId, 16) or "Studio"
+				sessionInfo.value.Text = formatDuration(os.clock() - PANEL_STARTED_AT)
+				userInfo.value.Text = "@" .. LocalPlayer.Name
+				userIdInfo.value.Text = tostring(LocalPlayer.UserId)
+				teamInfo.value.Text = LocalPlayer.Team and LocalPlayer.Team.Name or "Sem time"
+				accountInfo.value.Text = tostring(LocalPlayer.AccountAge) .. " dias"
+			end
+
+			trackViewConnection(Players.PlayerAdded:Connect(function()
+				safeCall("Main.PlayerAdded", updateMainStats)
+			end))
+			trackViewConnection(Players.PlayerRemoving:Connect(function()
+				safeCall("Main.PlayerRemoving", updateMainStats)
+			end))
+			trackViewConnection(LocalPlayer:GetPropertyChangedSignal("Team"):Connect(function()
+				safeCall("Main.TeamChanged", updateMainStats)
+			end))
+			trackViewConnection(RunService.RenderStepped:Connect(function()
+				frameCount += 1
+				local now = os.clock()
+
+				if now - lastFpsClock >= 1 then
+					currentFps = math.floor(frameCount / (now - lastFpsClock) + 0.5)
+					frameCount = 0
+					lastFpsClock = now
+					safeCall("Main.UpdateStats", updateMainStats)
+				end
+			end))
+
+			safeCall("Main.UpdateStats", updateMainStats)
+
+		end,
+	},
+	Visuals = {
+		title = "Visuals",
+		desc = "Elementos visuais do cheat.",
+		render = function()
+			sectionLabel("ESP", 1)
+			createRow({
+				id = "hitbox",
+				order = 2,
+				icon = "⬤",
+				title = "Hitbox (ESP)",
+				sub = "caixa ao redor dos inimigos",
+				kind = "toggle",
+				default = false,
+				onToggle = function(on) Cheat.setHitbox(on) end,
+			})
+			createRow({
+				id = "tracers",
+				order = 3,
+				icon = "⬤",
+				title = "Tracers",
+				sub = "linha ate cada inimigo",
+				kind = "toggle",
+				default = false,
+				onToggle = function(on) Cheat.setTracers(on) end,
+			})
+			createRow({
+				id = "highlight",
+				order = 4,
+				icon = "✨",
+				title = "Glow ESP",
+				sub = "destaque vermelho com bordas brancas",
+				kind = "toggle",
+				default = false,
+				onToggle = function(on) Cheat.setHighlight(on) end,
+			})
+
+			sectionLabel("FOV", 5)
+			createRow({
+				id = "circle",
+				order = 6,
+				icon = "◎",
+				title = "Circulo FOV",
+				sub = "mostra o circulo de mira",
+				kind = "toggle",
+				default = false,
+				onToggle = function(on)
+					Cheat.setCircle(on)
+					if on then
+						Cheat.setCircleRadius(AppState.sliders.circleRadius or 80)
+					end
+				end,
+			})
+			createSliderRow({
+				id = "circleRadius",
+				order = 7,
+				title = "Raio do Circulo",
+				sub = "tamanho do FOV",
+				min = 20,
+				max = 300,
+				step = 10,
+				default = AppState.sliders.circleRadius or 80,
+				onChange = function(val) Cheat.setCircleRadius(val) end,
+			})
+		end,
+	},
+	Combat = {
+		title = "Combat",
+		desc = "Ajustes de combate.",
+		render = function()
+			sectionLabel("Aimbot", 1)
+			createRow({
+				id = "aimbot",
+				order = 2,
+				icon = "🎯",
+				title = "Aimbot",
+				sub = "trava a mira no inimigo",
+				kind = "toggle",
+				default = false,
+				onToggle = function(on) Cheat.setAimbot(on) end,
+			})
+			createRow({
+				id = "teamCheckAimbot",
+				order = 3,
+				icon = "👥",
+				title = "Team Check (Aimbot)",
+				sub = "ignorar aliados na mira",
+				kind = "toggle",
+				default = false,
+				onToggle = function(on) Cheat.setTeamCheckAimbot(on) end,
+			})
+		end,
+	},
+	Console = {
+		title = "Console",
+		desc = "Erros e avisos capturados pelo painel.",
+		render = function()
+			local refreshQueued = false
+			InternalConsole.refresh = function()
+				if refreshQueued or AppState.activeView ~= "Console" then
+					return
+				end
+
+				refreshQueued = true
+				task.delay(0.2, function()
+					refreshQueued = false
+					if AppState.activeView == "Console" then
+						rerenderActiveView(false)
+					end
+				end)
+			end
+
+			sectionLabel("Console interno", 1)
+
+			local toolbar = create("Frame", {
+				Size = UDim2.new(1, 0, 0, 42),
+				LayoutOrder = 2,
+				BackgroundTransparency = SURFACE_GLASS_TRANSPARENCY,
+				BorderSizePixel = 0,
+				Parent = ContentScroll,
+			})
+			bindTheme(toolbar, "BackgroundColor3", "BgRow")
+			corner(toolbar, 8)
+			local toolbarStroke = stroke(toolbar, Theme.Line, 1)
+			bindTheme(toolbarStroke, "Color", "Line")
+
+			local countLabel = create("TextLabel", {
+				Size = UDim2.new(1, -116, 1, 0),
+				Position = UDim2.fromOffset(14, 0),
+				BackgroundTransparency = 1,
+				Text = tostring(#InternalConsole.entries) .. " registros capturados",
+				Font = FONT_BODY_BOLD,
+				TextSize = 12,
+				TextXAlignment = Enum.TextXAlignment.Left,
+				Parent = toolbar,
+			})
+			bindTheme(countLabel, "TextColor3", "TextHi")
+
+			local clearButton = create("TextButton", {
+				Size = UDim2.fromOffset(90, 26),
+				Position = UDim2.new(1, -102, 0.5, -13),
+				BackgroundTransparency = 0,
+				Text = "Limpar",
+				Font = FONT_BODY_BOLD,
+				TextSize = 11,
+				AutoButtonColor = false,
+				BorderSizePixel = 0,
+				Parent = toolbar,
+			})
+			bindTheme(clearButton, "BackgroundColor3", "BgSwitchOff")
+			bindTheme(clearButton, "TextColor3", "TextHi")
+			corner(clearButton, 8)
+			clearButton.MouseButton1Click:Connect(function()
+				safeCall("Console.Limpar", function()
+					for i = #InternalConsole.entries, 1, -1 do
+						table.remove(InternalConsole.entries, i)
+					end
+					rerenderActiveView(false)
+				end)
+			end)
+
+			if #InternalConsole.entries == 0 then
+				createInfoRow({
+					order = 3,
+					title = "Sem erros capturados",
+					sub = "quando algo acontecer, aparece aqui",
+					value = "OK",
+				})
+				return
+			end
+
+			for index, entry in ipairs(InternalConsole.entries) do
+				local row = create("Frame", {
+					Size = UDim2.new(1, 0, 0, 64),
+					LayoutOrder = 10 + index,
+					BackgroundTransparency = SURFACE_GLASS_TRANSPARENCY,
+					BorderSizePixel = 0,
+					Parent = ContentScroll,
+				})
+				bindTheme(row, "BackgroundColor3", "BgRow")
+				corner(row, 8)
+				local rowStroke = stroke(row, Theme.Line, 1)
+				bindTheme(rowStroke, "Color", "Line")
+
+				local levelTextColor = Theme.TextLow
+				if entry.level == "Erro" then
+					levelTextColor = Theme.Error
+				elseif entry.level == "Aviso" then
+					levelTextColor = Theme.TextMid
+				elseif entry.level == "Info" then
+					levelTextColor = Theme.TextLow
+				end
+
+				local levelLabel = create("TextLabel", {
+					Size = UDim2.fromOffset(58, 20),
+					Position = UDim2.fromOffset(12, 9),
+					BackgroundTransparency = 1,
+					Text = entry.level,
+					Font = FONT_MONO,
+					TextSize = 10,
+					TextColor3 = levelTextColor,
+					BorderSizePixel = 0,
+					Parent = row,
+				})
+
+				local metaLabel = create("TextLabel", {
+					Size = UDim2.new(1, -92, 0, 16),
+					Position = UDim2.fromOffset(80, 11),
+					BackgroundTransparency = 1,
+					Text = entry.time .. "  |  " .. entry.source,
+					Font = FONT_MONO,
+					TextSize = 9,
+					TextXAlignment = Enum.TextXAlignment.Left,
+					TextTruncate = Enum.TextTruncate.AtEnd,
+					Parent = row,
+				})
+				bindTheme(metaLabel, "TextColor3", "TextLow")
+
+				local messageLabel = create("TextLabel", {
+					Size = UDim2.new(1, -24, 0, 26),
+					Position = UDim2.fromOffset(12, 33),
+					BackgroundTransparency = 1,
+					Text = entry.message,
+					Font = FONT_MONO,
+					TextSize = 9,
+					TextXAlignment = Enum.TextXAlignment.Left,
+					TextYAlignment = Enum.TextYAlignment.Top,
+					TextWrapped = true,
+					TextTruncate = Enum.TextTruncate.AtEnd,
+					Parent = row,
+				})
+				bindTheme(messageLabel, "TextColor3", "TextMid")
+			end
+		end,
+	},
+	Settings = {
+		title = "Settings",
+		desc = "Preferencias gerais do painel.",
+		render = function()
+			sectionLabel("Tema", 1)
+			local themeRow = create("Frame", {
+				Size = UDim2.new(1, 0, 0, 76),
+				LayoutOrder = 2,
+				BackgroundTransparency = SURFACE_GLASS_TRANSPARENCY,
+				BorderSizePixel = 0,
+				Parent = ContentScroll,
+			})
+			bindTheme(themeRow, "BackgroundColor3", "BgRow")
+			corner(themeRow, 8)
+			local themeRowStroke = stroke(themeRow, Theme.Line, 1)
+			bindTheme(themeRowStroke, "Color", "Line")
+
+			local themeTitle = create("TextLabel", {
+				Size = UDim2.new(1, -24, 0, 14),
+				Position = UDim2.fromOffset(12, 10),
+				BackgroundTransparency = 1,
+				Text = "Aparencia",
+				Font = FONT_BODY_BOLD,
+				TextSize = 12.5,
+				TextXAlignment = Enum.TextXAlignment.Left,
+				Parent = themeRow,
+			})
+			bindTheme(themeTitle, "TextColor3", "TextHi")
+			local themeSub = create("TextLabel", {
+				Size = UDim2.new(1, -24, 0, 12),
+				Position = UDim2.fromOffset(12, 27),
+				BackgroundTransparency = 1,
+				Text = "escolha entre tema claro ou escuro",
+				Font = FONT_MONO,
+				TextSize = 10,
+				TextXAlignment = Enum.TextXAlignment.Left,
+				TextTruncate = Enum.TextTruncate.AtEnd,
+				Parent = themeRow,
+			})
+			bindTheme(themeSub, "TextColor3", "TextMid")
+
+			local segmentHolder = create("Frame", {
+				Size = UDim2.fromOffset(160, 26),
+				Position = UDim2.fromOffset(12, 44),
+				BorderSizePixel = 0,
+				Parent = themeRow,
+			})
+			bindTheme(segmentHolder, "BackgroundColor3", "BgSwitchOff")
+			corner(segmentHolder, 13)
+			local segmentKnob = create("Frame", {
+				Size = UDim2.fromOffset(78, 22),
+				BorderSizePixel = 0,
+				Parent = segmentHolder,
+			})
+			corner(segmentKnob, 11)
+
+			local darkBtn = create("TextButton", {
+				Size = UDim2.fromOffset(80, 26),
+				BackgroundTransparency = 1,
+				Text = "Dark",
+				Font = FONT_BODY_MED,
+				TextSize = 11.5,
+				AutoButtonColor = false,
+				Parent = segmentHolder,
+			})
+			local lightBtn = create("TextButton", {
+				Size = UDim2.fromOffset(80, 26),
+				Position = UDim2.fromOffset(80, 0),
+				BackgroundTransparency = 1,
+				Text = "Light",
+				Font = FONT_BODY_MED,
+				TextSize = 11.5,
+				AutoButtonColor = false,
+				Parent = segmentHolder,
+			})
+
+			local function refreshSegment(animate)
+				local isDark = AppState.themeName == "Dark"
+				applyProps(segmentKnob, {
+					Position = isDark and UDim2.fromOffset(2, 2) or UDim2.fromOffset(80, 2),
+					BackgroundColor3 = Theme.AccentDim,
+				}, animate)
+				applyProps(darkBtn, { TextColor3 = isDark and Theme.AccentHi or Theme.TextMid }, animate)
+				applyProps(lightBtn, { TextColor3 = isDark and Theme.TextMid or Theme.AccentHi }, animate)
+			end
+			addViewThemeRefresher(refreshSegment)
+			refreshSegment(false)
+
+			darkBtn.MouseButton1Click:Connect(function()
+				safeCall("Settings.Theme.Dark", function()
+					if AppState.themeName ~= "Dark" then applyTheme("Dark", true) end
+				end)
+			end)
+			lightBtn.MouseButton1Click:Connect(function()
+				safeCall("Settings.Theme.Light", function()
+					if AppState.themeName ~= "Light" then applyTheme("Light", true) end
+				end)
+			end)
+
+			sectionLabel("Sobre", 3)
+			createRow({
+				order = 4,
+				icon = "i",
+				title = "Versao da interface",
+				sub = "build atual",
+				kind = "chip",
+				chipText = "v2.5.3",
+			})
+		end,
+	},
+}
+
+-- ============================================================
+-- 15. NAVEGAÇÃO ENTRE VIEWS
+-- ============================================================
+local Views = {}
+Views.MainHub = function() ViewMeta.MainHub.render() end
+Views.Visuals = function() ViewMeta.Visuals.render() end
+Views.Combat = function() ViewMeta.Combat.render() end
+Views.Console = function() ViewMeta.Console.render() end
+Views.Settings = function() ViewMeta.Settings.render() end
+
+local function openView(name)
+	local meta = ViewMeta[name]
+	if not meta then return end
+	AppState.waitingForKey = nil
+	noticeToken = noticeToken + 1
+	AppState.activeView = name
+	ContentTitle.Text = meta.title
+	ContentDesc.Text = meta.desc
+	clearContent()
+	safeCall("View." .. name, meta.render)
+	refreshNavVisuals(true)
+end
+
+MainHubBtn.MouseButton1Click:Connect(function() safeCall("Nav.Main", openView, "MainHub") end)
+VisualsBtn.MouseButton1Click:Connect(function() safeCall("Nav.Visuals", openView, "Visuals") end)
+CombatBtn.MouseButton1Click:Connect(function() safeCall("Nav.Combat", openView, "Combat") end)
+ConsoleBtn.MouseButton1Click:Connect(function() safeCall("Nav.Console", openView, "Console") end)
+SettingsBtn.MouseButton1Click:Connect(function() safeCall("Nav.Settings", openView, "Settings") end)
+
+-- ============================================================
+-- 16. TECLA DE ATALHO CONFIGURAVEL E ARRASTE
+-- ============================================================
+UserInputService.InputBegan:Connect(function(input, gp)
+	safeCall("Hotkey.Toggle", function()
+		if gp then return end
+		if AppState.isLoading then return end
+		if input.UserInputType ~= Enum.UserInputType.Keyboard then return end
+
+		if AppState.waitingForKey then
+			if input.KeyCode == Enum.KeyCode.Unknown then return end
+			if input.KeyCode == AppState.toggleKey then
+				showNotice("Essa tecla abre o painel. Escolha outra.")
+				return
+			end
+
+			local keyId = AppState.waitingForKey
+			for otherId, keyCode in pairs(AppState.keybinds) do
+				if otherId ~= keyId and keyCode == input.KeyCode then
+					AppState.keybinds[otherId] = Enum.KeyCode.Unknown
+				end
+			end
+			AppState.keybinds[keyId] = input.KeyCode
+			AppState.waitingForKey = nil
+
+			if ScreenGui.Enabled then
+				rerenderActiveView(false)
+				showNotice("Tecla alterada para " .. keyText(input.KeyCode) .. ".")
+			end
+			return
+		end
+
+		if input.KeyCode == AppState.toggleKey then
+			if AppState.isLoggedIn then
+				if ScreenGui.Enabled then
+					setInterfaceEnabled(false)
+				else
+					showPanelCentered()
+				end
+			else
+				if ScreenGui.Enabled then
+					setInterfaceEnabled(false)
+				else
+					showLoginCentered()
+				end
+			end
+			return
+		end
+
+		if not AppState.isLoggedIn then
+			return
+		end
+
+		for id, keyCode in pairs(AppState.keybinds) do
+			if keyCode == input.KeyCode and keyCode ~= Enum.KeyCode.Unknown then
+				setFeatureToggle(id, not (AppState.toggles[id] == true))
+				if ScreenGui.Enabled and (AppState.activeView == "Visuals" or AppState.activeView == "Combat") then
+					rerenderActiveView(false)
+				end
+				return
+			end
+		end
+	end)
+end)
+
+-- Arraste do painel
+do
+	local dragging = false
+	local dragStart, startPos
+
+	local function beginPanelDrag(input)
+		safeCall("Drag.Begin", function()
+			if input.UserInputType ~= Enum.UserInputType.MouseButton1 and input.UserInputType ~= Enum.UserInputType.Touch then
+				return
+			end
+			dragging = true
+			dragStart = inputPosition2(input)
+			startPos = Panel.Position
+			input.Changed:Connect(function()
+				safeCall("Drag.End", function()
+					if input.UserInputState == Enum.UserInputState.End then
+						dragging = false
+					end
+				end)
+			end)
+		end)
+	end
+
+	Titlebar.InputBegan:Connect(beginPanelDrag)
+	DragHandle.InputBegan:Connect(beginPanelDrag)
+
+	UserInputService.InputChanged:Connect(function(input)
+		safeCall("Drag.Move", function()
+			if not dragging then return end
+			if input.UserInputType ~= Enum.UserInputType.MouseMovement and input.UserInputType ~= Enum.UserInputType.Touch then
+				return
+			end
+			local delta = inputPosition2(input) - dragStart
+			Panel.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X,
+				startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+		end)
+	end)
+end
+
+-- ============================================================
+-- 17. RESPONSIVIDADE E INICIALIZAÇÃO
+-- ============================================================
+local viewportConnection
+
+local function bindViewportWatcher()
+	if viewportConnection and viewportConnection.Connected then
+		viewportConnection:Disconnect()
+	end
+	local cam = Workspace.CurrentCamera
+	if cam then
+		viewportConnection = cam:GetPropertyChangedSignal("ViewportSize"):Connect(function()
+			safeCall("Viewport.Resize", updatePanelScale)
+		end)
+	end
+	safeCall("Viewport.Resize", updatePanelScale)
+end
+
+Workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
+	safeCall("Viewport.CameraChanged", bindViewportWatcher)
+end)
+safeCall("Viewport.Bind", bindViewportWatcher)
+
+-- Abre a view inicial, aplica tema e mostra loading
+safeCall("Init.OpenView", openView, "MainHub")
+safeCall("Init.Theme", applyTheme, AppState.themeName, false)
+safeCall("Init.Loading", showLoadingNotification, showLoginCentered)
