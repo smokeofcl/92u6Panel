@@ -67,7 +67,7 @@ local CONFIG = {
 	Login = {
 		Credentials = {
 			{ Username = "Smokeofcl", Token = "smk" },
-			{ Username = "", Token = "" },
+			{ Username = "sevityz", Token = "gicaruim" },
 			-- { Username = "OutroUsuario", Token = "outro-token" },
 		},
 		Title = "Login",
