@@ -9,6 +9,7 @@ local StarterGui = game:GetService("StarterGui")
 local LogService = game:GetService("LogService")
 local Workspace = game:GetService("Workspace")
 local RunService = game:GetService("RunService")
+local HttpService = game:GetService("HttpService")
 
 local LocalPlayer = Players.LocalPlayer
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
@@ -51,6 +52,7 @@ local PANEL_GLASS_TRANSPARENCY = 0
 local SIDEBAR_GLASS_TRANSPARENCY = 0
 local SURFACE_GLASS_TRANSPARENCY = 0
 local UI_TWEEN_TIME = 0.08
+local KEYBINDS_FILE = "92u6_panel_keybinds.json"
 
 -- ============================================================
 -- 2. CONFIGURAÇÕES GERAIS
@@ -89,12 +91,12 @@ local CONFIG = {
 		Console = { Image = "rbxassetid://99757278101469" },
 	},
 	Keybinds = {
-		aimbot = Enum.KeyCode.E,
-		tracers = Enum.KeyCode.T,
-		hitbox = Enum.KeyCode.H,
-		circle = Enum.KeyCode.F,
-		highlight = Enum.KeyCode.G,
-		teamCheckAimbot = Enum.KeyCode.Y,
+		aimbot = Enum.KeyCode.Unknown,
+		tracers = Enum.KeyCode.Unknown,
+		hitbox = Enum.KeyCode.Unknown,
+		circle = Enum.KeyCode.Unknown,
+		highlight = Enum.KeyCode.Unknown,
+		teamCheckAimbot = Enum.KeyCode.Unknown,
 	},
 }
 
@@ -231,48 +233,6 @@ do
 			end
 		end
 		return best.head
-	end
-
-	-- Função para "dar vida" a um modelo (cria Humanoid)
-	function Cheat.bringToLife(model)
-		if model:FindFirstChildOfClass("Humanoid") then return end
-		local rootPart = model:FindFirstChild("HumanoidRootPart") or Instance.new("Part")
-		if not model:FindFirstChild("HumanoidRootPart") then
-			rootPart.Name = "HumanoidRootPart"
-			rootPart.Size = Vector3.new(2, 2, 2)
-			rootPart.CFrame = model:GetPivot()
-			rootPart.Anchored = false
-			rootPart.CanCollide = false
-			rootPart.Transparency = 0.5
-			rootPart.Color = Color3.fromRGB(255, 0, 0)
-			rootPart.Parent = model
-		end
-		local head = model:FindFirstChild("Head") or Instance.new("Part")
-		if not model:FindFirstChild("Head") then
-			head.Name = "Head"
-			head.Size = Vector3.new(2, 2, 2)
-			head.CFrame = rootPart.CFrame * CFrame.new(0, 3, 0)
-			head.Anchored = false
-			head.CanCollide = false
-			head.Transparency = 0.5
-			head.Color = Color3.fromRGB(255, 255, 0)
-			head.Parent = model
-		end
-		local humanoid = Instance.new("Humanoid")
-		humanoid.MaxHealth = 100
-		humanoid.Health = 100
-		humanoid.WalkSpeed = 16
-		humanoid.Parent = model
-
-		Instance.new("Attachment", rootPart)
-		Instance.new("Attachment", head)
-		local weld = Instance.new("WeldConstraint")
-		weld.Part0 = rootPart
-		weld.Part1 = head
-		weld.Parent = rootPart
-
-		model.PrimaryPart = rootPart
-		model:SetPrimaryPartCFrame(rootPart.CFrame)
 	end
 
 	-- Setters públicos
@@ -798,8 +758,97 @@ local function keyText(keyCode)
 		return keyCode.Name
 	end
 
-	return "-"
+	return ""
 end
+
+local function keyCodeFromName(name)
+	if type(name) ~= "string" or name == "" then
+		return Enum.KeyCode.Unknown
+	end
+
+	local ok, keyCode = pcall(function()
+		return Enum.KeyCode[name]
+	end)
+
+	if ok and typeof(keyCode) == "EnumItem" then
+		return keyCode
+	end
+
+	return Enum.KeyCode.Unknown
+end
+
+local function getSerializableKeybinds()
+	local data = {}
+
+	for id, keyCode in pairs(AppState.keybinds) do
+		data[id] = keyText(keyCode)
+	end
+
+	return data
+end
+
+local function saveKeybinds()
+	if type(writefile) ~= "function" then
+		return false
+	end
+
+	local okEncode, encoded = pcall(function()
+		return HttpService:JSONEncode(getSerializableKeybinds())
+	end)
+
+	if not okEncode then
+		pushConsole("Aviso", tostring(encoded), "Keybinds")
+		return false
+	end
+
+	local okWrite, writeErr = pcall(function()
+		writefile(KEYBINDS_FILE, encoded)
+	end)
+
+	if not okWrite then
+		pushConsole("Aviso", tostring(writeErr), "Keybinds")
+	end
+
+	return okWrite
+end
+
+local function loadSavedKeybinds()
+	if type(readfile) ~= "function" then
+		return
+	end
+
+	if type(isfile) == "function" then
+		local okFile, exists = pcall(function()
+			return isfile(KEYBINDS_FILE)
+		end)
+
+		if okFile and not exists then
+			return
+		end
+	end
+
+	local okRead, raw = pcall(function()
+		return readfile(KEYBINDS_FILE)
+	end)
+
+	if not okRead or type(raw) ~= "string" or raw == "" then
+		return
+	end
+
+	local okDecode, data = pcall(function()
+		return HttpService:JSONDecode(raw)
+	end)
+
+	if not okDecode or type(data) ~= "table" then
+		return
+	end
+
+	for id in pairs(AppState.keybinds) do
+		AppState.keybinds[id] = keyCodeFromName(data[id])
+	end
+end
+
+loadSavedKeybinds()
 
 local function create(className, props)
 	local okNew, inst = pcall(function()
@@ -1203,24 +1252,24 @@ local function showLoadingNotification(onComplete)
 		waitLoadingStep()
 
 		if not game:IsLoaded() then
-			loadingMessage.Text = "Carregando jogo"
+			loadingMessage.Text = "Carregando Interface"
 			game.Loaded:Wait()
 		end
 		setLoadingProgress(0.28)
 		waitLoadingStep()
 
-		loadingMessage.Text = "Carregando imagem"
+		loadingMessage.Text = "Carregando Funções"
 		preloadLoadingAssets()
 		setLoadingProgress(0.52)
 		waitLoadingStep()
 
-		loadingMessage.Text = "Carregando interface"
+		loadingMessage.Text = "Carregando essenciais"
 		updatePanelScale()
 		applyTheme(AppState.themeName, false)
 		setLoadingProgress(0.72)
 		waitLoadingStep()
 
-		loadingMessage.Text = "Finalizando"
+		loadingMessage.Text = "Finalizado"
 		waitForContentQueue()
 		setLoadingProgress(0.9)
 
@@ -1762,7 +1811,7 @@ local function credentialIsValid(username, token)
 		local validUsername = trimCredentialText(credential.Username)
 		local validToken = trimCredentialText(credential.Token)
 
-		if username == validUsername and token == validToken then
+		if validUsername ~= "" and validToken ~= "" and username == validUsername and token == validToken then
 			return true
 		end
 	end
@@ -2317,39 +2366,6 @@ local function createRow(opts)
 	row.MouseEnter:Connect(function() hovered = true; paintRow(row, hovered, true) end)
 	row.MouseLeave:Connect(function() hovered = false; paintRow(row, hovered, true) end)
 
-	-- Ícone
-	local iconBg = create("Frame", {
-		Size = UDim2.fromOffset(28, 28),
-		Position = UDim2.fromOffset(10, 10),
-		BorderSizePixel = 0,
-		Visible = false,
-		Parent = row,
-	})
-	bindTheme(iconBg, "BackgroundColor3", opts.muted and "MutedWash" or "AccentWash")
-	corner(iconBg, 7)
-	local iconStroke = stroke(iconBg, Theme.Accent, 1)
-	bindTheme(iconStroke, "Color", opts.muted and "Muted" or "Accent")
-
-	if opts.imageId then
-		local img = create("ImageLabel", {
-			Size = UDim2.fromScale(1, 1),
-			BackgroundTransparency = 1,
-			Image = opts.imageId,
-			ScaleType = Enum.ScaleType.Fit,
-			Parent = iconBg,
-		})
-	else
-		local iconText = create("TextLabel", {
-			Size = UDim2.fromScale(1, 1),
-			BackgroundTransparency = 1,
-			Text = opts.icon or "•",
-			Font = FONT_BODY,
-			TextSize = 13,
-			Parent = iconBg,
-		})
-		bindTheme(iconText, "TextColor3", opts.muted and "MutedText" or "AccentHi")
-	end
-
 	-- Títulos
 	local titleLabel = create("TextLabel", {
 		Size = UDim2.new(1, -156, 0, 14),
@@ -2770,53 +2786,19 @@ end
 ViewMeta = {
 	MainHub = {
 		title = "Main",
-		desc = "Informações importantes do servidor.",
+		desc = "",
 		render = function()
-			sectionLabel("Servidor", 1)
-			local playersInfo = createInfoRow({ order = 2, title = "Jogadores", sub = "pessoas no servidor", value = "--" })
-			local pingInfo = createInfoRow({ order = 3, title = "Ping", sub = "latência aproximada", value = "-- ms" })
-			local fpsInfo = createInfoRow({ order = 4, title = "FPS", sub = "desempenho do cliente", value = "--" })
-			local serverTypeInfo = createInfoRow({ order = 5, title = "Tipo de servidor", sub = "sessão atual", value = "--" })
-
-			sectionLabel("Jogo", 6)
-			local placeInfo = createInfoRow({ order = 7, title = "Place ID", sub = "identificador do mapa", value = tostring(game.PlaceId), valueWidth = 140 })
-			local versionInfo = createInfoRow({ order = 8, title = "Versão do place", sub = "publicação carregada", value = tostring(game.PlaceVersion or 0) })
-			local jobInfo = createInfoRow({ order = 9, title = "Job ID", sub = "id curto do servidor", value = "--", valueWidth = 140 })
-			local sessionInfo = createInfoRow({ order = 10, title = "Tempo no painel", sub = "desde que o script iniciou", value = "00:00" })
-
-			sectionLabel("Jogador", 11)
-			local userInfo = createInfoRow({ order = 12, title = "Usuário", sub = "nome da conta", value = "@" .. LocalPlayer.Name, valueWidth = 140 })
-			local userIdInfo = createInfoRow({ order = 13, title = "User ID", sub = "identificador da conta", value = tostring(LocalPlayer.UserId), valueWidth = 140 })
-			local teamInfo = createInfoRow({ order = 14, title = "Time", sub = "equipe atual", value = "--" })
-			local accountInfo = createInfoRow({ order = 15, title = "Idade da conta", sub = "dias desde a criação", value = tostring(LocalPlayer.AccountAge) .. " dias" })
-
-			local frameCount = 0
-			local lastFpsClock = os.clock()
-			local currentFps = 0
+			local userInfo = createInfoRow({ order = 1, title = "Usuário", sub = "nome da conta", value = "@" .. LocalPlayer.Name, valueWidth = 140 })
+			local userIdInfo = createInfoRow({ order = 2, title = "UserID", sub = "identificador da conta", value = tostring(LocalPlayer.UserId), valueWidth = 140 })
+			local playersInfo = createInfoRow({ order = 3, title = "Jogadores", sub = "pessoas no servidor", value = "--" })
+			local teamInfo = createInfoRow({ order = 4, title = "Time", sub = "equipe atual", value = "--" })
 
 			local function updateMainStats()
 				local playerCount = #Players:GetPlayers()
 				playersInfo.value.Text = tostring(playerCount) .. " / " .. tostring(Players.MaxPlayers)
-
-				local pingMs = getPingMs()
-				pingInfo.value.Text = pingMs and (tostring(pingMs) .. " ms") or "N/A"
-				fpsInfo.value.Text = currentFps > 0 and tostring(currentFps) or "--"
-
-				-- Não use game.PrivateServerId no cliente: isso gera warning infinito no Developer Console.
-				if game.JobId == "" then
-					serverTypeInfo.value.Text = "Studio"
-				else
-					serverTypeInfo.value.Text = "Sessão ativa"
-				end
-
-				placeInfo.value.Text = tostring(game.PlaceId)
-				versionInfo.value.Text = tostring(game.PlaceVersion or 0)
-				jobInfo.value.Text = game.JobId ~= "" and shortText(game.JobId, 16) or "Studio"
-				sessionInfo.value.Text = formatDuration(os.clock() - PANEL_STARTED_AT)
 				userInfo.value.Text = "@" .. LocalPlayer.Name
 				userIdInfo.value.Text = tostring(LocalPlayer.UserId)
 				teamInfo.value.Text = LocalPlayer.Team and LocalPlayer.Team.Name or "Sem time"
-				accountInfo.value.Text = tostring(LocalPlayer.AccountAge) .. " dias"
 			end
 
 			trackViewConnection(Players.PlayerAdded:Connect(function()
@@ -2828,17 +2810,6 @@ ViewMeta = {
 			trackViewConnection(LocalPlayer:GetPropertyChangedSignal("Team"):Connect(function()
 				safeCall("Main.TeamChanged", updateMainStats)
 			end))
-			trackViewConnection(RunService.RenderStepped:Connect(function()
-				frameCount += 1
-				local now = os.clock()
-
-				if now - lastFpsClock >= 1 then
-					currentFps = math.floor(frameCount / (now - lastFpsClock) + 0.5)
-					frameCount = 0
-					lastFpsClock = now
-					safeCall("Main.UpdateStats", updateMainStats)
-				end
-			end))
 
 			safeCall("Main.UpdateStats", updateMainStats)
 
@@ -2846,13 +2817,12 @@ ViewMeta = {
 	},
 	Visuals = {
 		title = "Visuals",
-		desc = "Elementos visuais do cheat.",
+		desc = "",
 		render = function()
 			sectionLabel("ESP", 1)
 			createRow({
 				id = "hitbox",
 				order = 2,
-				icon = "⬤",
 				title = "Hitbox (ESP)",
 				sub = "caixa ao redor dos inimigos",
 				kind = "toggle",
@@ -2862,8 +2832,7 @@ ViewMeta = {
 			createRow({
 				id = "tracers",
 				order = 3,
-				icon = "⬤",
-				title = "Tracers",
+				title = "Tracers (ESP)",
 				sub = "linha até cada inimigo",
 				kind = "toggle",
 				default = false,
@@ -2872,8 +2841,7 @@ ViewMeta = {
 			createRow({
 				id = "highlight",
 				order = 4,
-				icon = "✨",
-				title = "Glow ESP",
+				title = "Glow (ESP)",
 				sub = "destaque vermelho com bordas brancas",
 				kind = "toggle",
 				default = false,
@@ -2884,8 +2852,7 @@ ViewMeta = {
 			createRow({
 				id = "circle",
 				order = 6,
-				icon = "◎",
-				title = "Círculo FOV",
+				title = "Aim FOV",
 				sub = "mostra o círculo de mira",
 				kind = "toggle",
 				default = false,
@@ -2899,7 +2866,7 @@ ViewMeta = {
 			createSliderRow({
 				id = "circleRadius",
 				order = 7,
-				title = "Raio do Círculo",
+				title = "Raio do Aim FOV",
 				sub = "tamanho do FOV",
 				min = 20,
 				max = 300,
@@ -2911,13 +2878,12 @@ ViewMeta = {
 	},
 	Combat = {
 		title = "Combat",
-		desc = "Ajustes de combate.",
+		desc = "",
 		render = function()
 			sectionLabel("Aimbot", 1)
 			createRow({
 				id = "aimbot",
 				order = 2,
-				icon = "🎯",
 				title = "Aimbot",
 				sub = "trava a mira no inimigo",
 				kind = "toggle",
@@ -2927,9 +2893,8 @@ ViewMeta = {
 			createRow({
 				id = "teamCheckAimbot",
 				order = 3,
-				icon = "👥",
-				title = "Team Check (Aimbot)",
-				sub = "ignorar aliados na mira",
+				title = "Team Check",
+				sub = "ignorar aliados",
 				kind = "toggle",
 				default = false,
 				onToggle = function(on) Cheat.setTeamCheckAimbot(on) end,
@@ -2938,7 +2903,7 @@ ViewMeta = {
 	},
 	Console = {
 		title = "Console",
-		desc = "Erros e avisos capturados pelo painel.",
+		desc = "",
 		render = function()
 			local refreshQueued = false
 			InternalConsole.refresh = function()
@@ -3180,7 +3145,6 @@ ViewMeta = {
 			sectionLabel("Sobre", 3)
 			createRow({
 				order = 4,
-				icon = "i",
 				title = "Versão da interface",
 				sub = "build atual",
 				kind = "chip",
@@ -3243,10 +3207,11 @@ UserInputService.InputBegan:Connect(function(input, gp)
 			end
 			AppState.keybinds[keyId] = input.KeyCode
 			AppState.waitingForKey = nil
+			saveKeybinds()
 
 			if ScreenGui.Enabled then
 				rerenderActiveView(false)
-				showNotice("Tecla alterada para " .. keyText(input.KeyCode) .. ".")
+				showNotice("Tecla salva: " .. keyText(input.KeyCode) .. ".")
 			end
 			return
 		end
