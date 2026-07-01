@@ -62,7 +62,7 @@ local CONFIG = {
 		Title = "92u6 Panel",
 		Subtitle = "",
 		LogoText = "9",
-		LogoImage = "rbxassetid://109163347080109",
+		LogoImage = "rbxassetid://94131922539635",
 	},
 	Login = {
 		Credentials = {
@@ -79,7 +79,7 @@ local CONFIG = {
 	Loading = {
 		Title = "92u6 Panel",
 		Message = "Está sendo carregado",
-		Image = "rbxassetid://109163347080109",
+		Image = "rbxassetid://94131922539635",
 		MinDuration = 4.5,
 		StepDelay = 0.45,
 		MaxQueueWait = 5,
