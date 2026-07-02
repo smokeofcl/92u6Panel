@@ -153,7 +153,7 @@ CONFIG.Login.PutDiscordInChat = function()
 end
 
 -- ============================================================
--- 3. MÓDULO CHEAT (LÓGICA DO HACK)
+-- 3. MÓDULO CHEAT (LÓGICA DO HACK) - CORRIGIDO TRACER
 -- ============================================================
 local Cheat = {}
 do
@@ -323,6 +323,14 @@ do
 		stroke.LineJoinMode = Enum.LineJoinMode.Round
 		Instance.new("UICorner", fovCircle).CornerRadius = UDim.new(1, 0)
 
+		-- Evento para limpar attachment quando o personagem morre
+		LocalPlayer.CharacterRemoving:Connect(function()
+			if localAttachment then
+				localAttachment:Destroy()
+				localAttachment = nil
+			end
+		end)
+
 		-- Eventos de jogador
 		Players.PlayerAdded:Connect(function(plr)
 			if highlight then
@@ -355,13 +363,26 @@ do
 				Camera.CFrame = CFrame.new(Camera.CFrame.Position, targetHead.Position)
 			end
 
-			-- Tracers
+			-- Tracers (CORRIGIDO)
 			if tracers then
+				-- Verifica se o personagem local existe e tem HumanoidRootPart
 				if localChar and localChar:FindFirstChild("HumanoidRootPart") then
-					if not localAttachment then
+					-- Recria o attachment se ele não existir ou foi destruído
+					if not localAttachment or not localAttachment.Parent or not localAttachment:IsDescendantOf(Workspace) then
+						if localAttachment then
+							localAttachment:Destroy()
+						end
 						localAttachment = Instance.new("Attachment", localChar.HumanoidRootPart)
 					end
+				else
+					-- Se não tem personagem, limpa o attachment
+					if localAttachment then
+						localAttachment:Destroy()
+						localAttachment = nil
+					end
 				end
+
+				-- Para cada jogador inimigo
 				for _, other in ipairs(Players:GetPlayers()) do
 					if other ~= LocalPlayer then
 						local char = other.Character
@@ -405,10 +426,15 @@ do
 					end
 				end
 			else
+				-- Se tracers desligado, limpa tudo
 				for plr, d in pairs(tracerStorage) do
 					if d.beam then d.beam:Destroy() end
 					if d.attachTarget then d.attachTarget:Destroy() end
 					tracerStorage[plr] = nil
+				end
+				if localAttachment then
+					localAttachment:Destroy()
+					localAttachment = nil
 				end
 			end
 
