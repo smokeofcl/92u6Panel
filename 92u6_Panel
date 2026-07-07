@@ -68,12 +68,11 @@ local CONFIG = {
 		Credentials = {
 			{ Username = "Smokeofcl", Token = "smk" },
 			{ Username = "sevityz", Token = "gicaruim" },
-			-- { Username = "OutroUsuario", Token = "outro-token" },
 		},
 		Title = "Login",
 		Subtitle = "acesso ao painel",
 		DiscordInvite = "https://discord.gg/vjRRpXvqxQ",
-		DiscordIcon = "rbxassetid://86674984085035", -- coloque rbxassetid:// da logo do Discord aqui
+		DiscordIcon = "rbxassetid://86674984085035",
 		DiscordIconTint = true,
 	},
 	Loading = {
@@ -85,10 +84,11 @@ local CONFIG = {
 		MaxQueueWait = 5,
 	},
 	Navigation = {
-		MainHub = { Image = "rbxassetid://120379033599785" }, -- coloque rbxassetid:// aqui
+		MainHub = { Image = "rbxassetid://120379033599785" },
 		Visuals = { Image = "rbxassetid://126315470586727" },
 		Combat = { Image = "rbxassetid://108496315566957" },
 		Console = { Image = "rbxassetid://99757278101469" },
+		Moviment = { Image = "rbxassetid://123456789012345" }, -- substitua pelo seu ID
 	},
 	Keybinds = {
 		aimbot = Enum.KeyCode.Unknown,
@@ -97,42 +97,29 @@ local CONFIG = {
 		circle = Enum.KeyCode.Unknown,
 		highlight = Enum.KeyCode.Unknown,
 		teamCheckAimbot = Enum.KeyCode.Unknown,
+		spin = Enum.KeyCode.Unknown,
 	},
 }
 
 CONFIG.Login.PutDiscordInChat = function()
 	local invite = CONFIG.Login.DiscordInvite
-
 	pcall(function()
 		StarterGui:SetCore("ChatActive", true)
 	end)
-
 	task.wait(0.05)
-
 	local roots = { PlayerGui }
 	pcall(function()
 		table.insert(roots, game:GetService("CoreGui"))
 	end)
-
 	local function looksLikeChatBox(obj)
-		if not obj:IsA("TextBox") then
-			return false
-		end
-
+		if not obj:IsA("TextBox") then return false end
 		local panelGui = PlayerGui:FindFirstChild("Panel92u6UI")
-		if panelGui and obj:IsDescendantOf(panelGui) then
-			return false
-		end
-
+		if panelGui and obj:IsDescendantOf(panelGui) then return false end
 		local name = string.lower(obj.Name)
 		local parentName = obj.Parent and string.lower(obj.Parent.Name) or ""
 		local placeholder = string.lower(obj.PlaceholderText or "")
-
-		return name:find("chat") ~= nil
-			or parentName:find("chat") ~= nil
-			or placeholder:find("chat") ~= nil
+		return name:find("chat") ~= nil or parentName:find("chat") ~= nil or placeholder:find("chat") ~= nil
 	end
-
 	for _, root in ipairs(roots) do
 		for _, obj in ipairs(root:GetDescendants()) do
 			if looksLikeChatBox(obj) then
@@ -141,19 +128,15 @@ CONFIG.Login.PutDiscordInChat = function()
 					obj:CaptureFocus()
 					obj.CursorPosition = #invite + 1
 				end)
-
-				if ok then
-					return true
-				end
+				if ok then return true end
 			end
 		end
 	end
-
 	return false
 end
 
 -- ============================================================
--- 3. MÓDULO CHEAT (LÓGICA DO HACK) - CORRIGIDO TRACER
+-- 3. MÓDULO CHEAT (LÓGICA DO HACK) - COM SPIN INTEGRADO (Heartbeat)
 -- ============================================================
 local Cheat = {}
 do
@@ -171,6 +154,7 @@ do
 		ESP_MAX_HEIGHT = 200,
 		HIGHLIGHT_FILL = Color3.fromRGB(255, 0, 0),
 		HIGHLIGHT_OUTLINE = Color3.fromRGB(255, 255, 255),
+		SPIN_SPEED = 9000, -- graus por segundo (padrão)
 	}
 
 	-- Estados
@@ -180,16 +164,22 @@ do
 	local circle = false
 	local highlight = false
 	local teamCheckAimbot = false
+	local spin = false
 	local targetHead = nil
 
 	-- Armazenamentos
 	local screenGui = nil
 	local fovCircle = nil
-	local espStorage = {}      -- [player] = {box, healthBg, healthFill}
-	local tracerStorage = {}   -- [player] = {beam, attachTarget}
-	local highlightStorage = {} -- [character] = Highlight
+	local espStorage = {}
+	local tracerStorage = {}
+	local highlightStorage = {}
 	local localAttachment = nil
 	local renderConnection = nil
+
+	-- Spin (Heartbeat + CFrame)
+	local spinConnection = nil
+	local spinAngle = 0
+	local rotationSpeed = CONFIG_CHEAT.SPIN_SPEED
 
 	-- Funções auxiliares locais
 	local function sameTeam(plr)
@@ -208,7 +198,6 @@ do
 		local camLook = Camera.CFrame.LookVector
 		local screenCenter = Camera.ViewportSize / 2
 		local best = { distance = math.huge, head = nil }
-
 		for _, other in ipairs(Players:GetPlayers()) do
 			if other ~= LocalPlayer then
 				if useTeamCheck and sameTeam(other) then continue end
@@ -302,6 +291,52 @@ do
 		if hl then hl:Destroy(); highlightStorage[character] = nil end
 	end
 
+	-- ========== SPIN (Heartbeat + CFrame) ==========
+	function Cheat.setSpin(enabled)
+		spin = enabled
+		if spin then
+			local char = LocalPlayer.Character
+			if char and char:FindFirstChild("HumanoidRootPart") and char:FindFirstChild("Humanoid") then
+				local humanoid = char.Humanoid
+				humanoid.AutoRotate = false
+			end
+
+			if not spinConnection then
+				spinAngle = 0
+				rotationSpeed = CONFIG_CHEAT.SPIN_SPEED
+				spinConnection = RunService.Heartbeat:Connect(function(dt)
+					if not spin then return end
+					local char = LocalPlayer.Character
+					if char and char:FindFirstChild("HumanoidRootPart") and char:FindFirstChild("Humanoid") then
+						local hrp = char.HumanoidRootPart
+						local humanoid = char.Humanoid
+						humanoid.AutoRotate = false
+						spinAngle = (spinAngle + rotationSpeed * dt) % 360
+						hrp.CFrame = CFrame.new(hrp.Position) * CFrame.Angles(0, math.rad(spinAngle), 0)
+					end
+				end)
+			end
+		else
+			if spinConnection then
+				spinConnection:Disconnect()
+				spinConnection = nil
+			end
+			spinAngle = 0
+			local char = LocalPlayer.Character
+			if char and char:FindFirstChild("Humanoid") then
+				char.Humanoid.AutoRotate = true
+			end
+		end
+	end
+
+	-- Função para recriar o spin ao renascer
+	local function refreshSpinOnCharacter()
+		if spin then
+			task.wait(0.1)
+			Cheat.setSpin(true)
+		end
+	end
+
 	-- Iniciar / Parar o loop
 	function Cheat.start()
 		if screenGui then return end
@@ -323,12 +358,22 @@ do
 		stroke.LineJoinMode = Enum.LineJoinMode.Round
 		Instance.new("UICorner", fovCircle).CornerRadius = UDim.new(1, 0)
 
-		-- Evento para limpar attachment quando o personagem morre
+		-- Evento para limpar attachment e spin quando o personagem morre
 		LocalPlayer.CharacterRemoving:Connect(function()
 			if localAttachment then
 				localAttachment:Destroy()
 				localAttachment = nil
 			end
+			if spinConnection then
+				spinConnection:Disconnect()
+				spinConnection = nil
+			end
+			spinAngle = 0
+		end)
+
+		-- Evento para recriar o spin ao renascer
+		LocalPlayer.CharacterAdded:Connect(function()
+			refreshSpinOnCharacter()
 		end)
 
 		-- Eventos de jogador
@@ -353,36 +398,26 @@ do
 			end
 		end)
 
-		-- Loop principal
+		-- Loop principal (Aimbot, Tracers, Hitbox)
 		renderConnection = RunService.RenderStepped:Connect(function()
 			targetHead = getClosestEnemy(teamCheckAimbot)
 			local localChar = LocalPlayer.Character
 
-			-- Aimbot
 			if aimbot and targetHead then
 				Camera.CFrame = CFrame.new(Camera.CFrame.Position, targetHead.Position)
 			end
 
-			-- Tracers (CORRIGIDO)
+			-- Tracers
 			if tracers then
-				-- Verifica se o personagem local existe e tem HumanoidRootPart
 				if localChar and localChar:FindFirstChild("HumanoidRootPart") then
-					-- Recria o attachment se ele não existir ou foi destruído
 					if not localAttachment or not localAttachment.Parent or not localAttachment:IsDescendantOf(Workspace) then
-						if localAttachment then
-							localAttachment:Destroy()
-						end
+						if localAttachment then localAttachment:Destroy() end
 						localAttachment = Instance.new("Attachment", localChar.HumanoidRootPart)
 					end
 				else
-					-- Se não tem personagem, limpa o attachment
-					if localAttachment then
-						localAttachment:Destroy()
-						localAttachment = nil
-					end
+					if localAttachment then localAttachment:Destroy(); localAttachment = nil end
 				end
 
-				-- Para cada jogador inimigo
 				for _, other in ipairs(Players:GetPlayers()) do
 					if other ~= LocalPlayer then
 						local char = other.Character
@@ -426,16 +461,12 @@ do
 					end
 				end
 			else
-				-- Se tracers desligado, limpa tudo
 				for plr, d in pairs(tracerStorage) do
 					if d.beam then d.beam:Destroy() end
 					if d.attachTarget then d.attachTarget:Destroy() end
 					tracerStorage[plr] = nil
 				end
-				if localAttachment then
-					localAttachment:Destroy()
-					localAttachment = nil
-				end
+				if localAttachment then localAttachment:Destroy(); localAttachment = nil end
 			end
 
 			-- Hitbox (ESP)
@@ -509,10 +540,17 @@ do
 				end
 			end
 		end)
+
+		-- Se o spin já estiver ativo, inicia
+		if spin then
+			Cheat.setSpin(true)
+		end
 	end
 
 	function Cheat.stop()
 		if renderConnection then renderConnection:Disconnect(); renderConnection = nil end
+		if spinConnection then spinConnection:Disconnect(); spinConnection = nil end
+		spinAngle = 0
 		for plr, d in pairs(tracerStorage) do
 			if d.beam then d.beam:Destroy() end
 			if d.attachTarget then d.attachTarget:Destroy() end
@@ -529,7 +567,7 @@ do
 		highlightStorage = {}
 		if fovCircle then fovCircle:Destroy(); fovCircle = nil end
 		if screenGui then screenGui:Destroy(); screenGui = nil end
-		aimbot = false; tracers = false; hitbox = false; circle = false; highlight = false
+		aimbot = false; tracers = false; hitbox = false; circle = false; highlight = false; spin = false
 		teamCheckAimbot = false
 	end
 end
@@ -600,6 +638,7 @@ local AppState = {
 		circle = false,
 		highlight = false,
 		teamCheckAimbot = false,
+		spin = false,
 	},
 	keybinds = {
 		aimbot = CONFIG.Keybinds.aimbot,
@@ -608,6 +647,7 @@ local AppState = {
 		circle = CONFIG.Keybinds.circle,
 		highlight = CONFIG.Keybinds.highlight,
 		teamCheckAimbot = CONFIG.Keybinds.teamCheckAimbot,
+		spin = CONFIG.Keybinds.spin,
 	},
 	sliders = {
 		circleRadius = 80,
@@ -615,11 +655,11 @@ local AppState = {
 }
 
 local Theme = Themes[AppState.themeName]
-local themeBindings = {}          -- { inst, prop, themeKey }
-local textFontBindings = {}       -- { inst, role }
-local globalThemeRefreshers = {}  -- funções que recebem (animate)
-local viewThemeRefreshers = {}    -- funções que recebem (animate) para a view atual
-local viewConnections = {}        -- conexões a serem limpas ao trocar de view
+local themeBindings = {}
+local textFontBindings = {}
+local globalThemeRefreshers = {}
+local viewThemeRefreshers = {}
+local viewConnections = {}
 local rerenderActiveView
 
 -- ============================================================
@@ -647,11 +687,8 @@ local function makeTraceback(err)
 	local message = tostring(err or "erro desconhecido")
 	if debug and type(debug.traceback) == "function" then
 		local ok, trace = pcall(debug.traceback, message, 2)
-		if ok and trace then
-			return normalizeLogText(trace)
-		end
+		if ok and trace then return normalizeLogText(trace) end
 	end
-
 	return normalizeLogText(message)
 end
 
@@ -662,12 +699,10 @@ local function pushConsole(level, message, source)
 		source = tostring(source or "Interface"),
 		message = normalizeLogText(message),
 	}
-
 	table.insert(InternalConsole.entries, 1, entry)
 	while #InternalConsole.entries > InternalConsole.maxEntries do
 		table.remove(InternalConsole.entries)
 	end
-
 	if InternalConsole.refresh then
 		task.defer(function()
 			pcall(InternalConsole.refresh)
@@ -676,25 +711,19 @@ local function pushConsole(level, message, source)
 end
 
 local function safeCall(source, fn, ...)
-	if type(fn) ~= "function" then
-		return false
-	end
-
+	if type(fn) ~= "function" then return false end
 	local args = packValues(...)
 	local results = nil
 	local ok, err = xpcall(function()
 		results = packValues(fn(unpackValues(args, 1, args.n)))
 	end, makeTraceback)
-
 	if not ok then
 		pushConsole("Erro", err, source)
 		return false
 	end
-
 	if results then
 		return true, unpackValues(results, 1, results.n)
 	end
-
 	return true
 end
 
@@ -706,7 +735,6 @@ local function messageTypeToLevel(messageType)
 	elseif messageType == Enum.MessageType.MessageInfo then
 		return "Info"
 	end
-
 	return "Log"
 end
 
@@ -724,18 +752,15 @@ local function getFontRole(font)
 	elseif font == FONT_MONO then
 		return "Mono"
 	end
-
 	return "Body"
 end
 
 local function applyFontToInstance(inst, role)
 	local preset = FONT_OPTIONS[AppState.fontName] or FONT_OPTIONS.Gotham
 	local font = preset[role] or preset.Body
-
 	local ok, err = pcall(function()
 		inst.Font = font
 	end)
-
 	if not ok then
 		pushConsole("Erro", err, "Font")
 	end
@@ -745,27 +770,21 @@ local function registerTextFont(inst, sourceFont)
 	if not (inst:IsA("TextLabel") or inst:IsA("TextButton") or inst:IsA("TextBox")) then
 		return
 	end
-
 	local role = getFontRole(sourceFont or inst.Font)
 	table.insert(textFontBindings, { inst = inst, role = role })
 	applyFontToInstance(inst, role)
 end
 
 local function applyUIFont(fontName)
-	if not FONT_OPTIONS[fontName] then
-		return
-	end
-
+	if not FONT_OPTIONS[fontName] then return end
 	AppState.fontName = fontName
 	local alive = {}
-
 	for _, binding in ipairs(textFontBindings) do
 		if binding.inst and binding.inst.Parent then
 			applyFontToInstance(binding.inst, binding.role)
 			table.insert(alive, binding)
 		end
 	end
-
 	textFontBindings = alive
 end
 
@@ -775,7 +794,6 @@ local function getNextFontName()
 			return FONT_ORDER[(index % #FONT_ORDER) + 1]
 		end
 	end
-
 	return FONT_ORDER[1]
 end
 
@@ -783,7 +801,6 @@ local function keyText(keyCode)
 	if typeof(keyCode) == "EnumItem" and keyCode ~= Enum.KeyCode.Unknown then
 		return keyCode.Name
 	end
-
 	return ""
 end
 
@@ -791,84 +808,57 @@ local function keyCodeFromName(name)
 	if type(name) ~= "string" or name == "" then
 		return Enum.KeyCode.Unknown
 	end
-
 	local ok, keyCode = pcall(function()
 		return Enum.KeyCode[name]
 	end)
-
 	if ok and typeof(keyCode) == "EnumItem" then
 		return keyCode
 	end
-
 	return Enum.KeyCode.Unknown
 end
 
 local function getSerializableKeybinds()
 	local data = {}
-
 	for id, keyCode in pairs(AppState.keybinds) do
 		data[id] = keyText(keyCode)
 	end
-
 	return data
 end
 
 local function saveKeybinds()
-	if type(writefile) ~= "function" then
-		return false
-	end
-
+	if type(writefile) ~= "function" then return false end
 	local okEncode, encoded = pcall(function()
 		return HttpService:JSONEncode(getSerializableKeybinds())
 	end)
-
 	if not okEncode then
 		pushConsole("Aviso", tostring(encoded), "Keybinds")
 		return false
 	end
-
 	local okWrite, writeErr = pcall(function()
 		writefile(KEYBINDS_FILE, encoded)
 	end)
-
 	if not okWrite then
 		pushConsole("Aviso", tostring(writeErr), "Keybinds")
 	end
-
 	return okWrite
 end
 
 local function loadSavedKeybinds()
-	if type(readfile) ~= "function" then
-		return
-	end
-
+	if type(readfile) ~= "function" then return end
 	if type(isfile) == "function" then
 		local okFile, exists = pcall(function()
 			return isfile(KEYBINDS_FILE)
 		end)
-
-		if okFile and not exists then
-			return
-		end
+		if okFile and not exists then return end
 	end
-
 	local okRead, raw = pcall(function()
 		return readfile(KEYBINDS_FILE)
 	end)
-
-	if not okRead or type(raw) ~= "string" or raw == "" then
-		return
-	end
-
+	if not okRead or type(raw) ~= "string" or raw == "" then return end
 	local okDecode, data = pcall(function()
 		return HttpService:JSONDecode(raw)
 	end)
-
-	if not okDecode or type(data) ~= "table" then
-		return
-	end
-
+	if not okDecode or type(data) ~= "table" then return end
 	for id in pairs(AppState.keybinds) do
 		AppState.keybinds[id] = keyCodeFromName(data[id])
 	end
@@ -880,17 +870,14 @@ local function create(className, props)
 	local okNew, inst = pcall(function()
 		return Instance.new(className)
 	end)
-
 	if not okNew then
 		pushConsole("Erro", tostring(inst), "Instance.new")
 		inst = Instance.new("Frame")
 	end
-
 	for p, v in pairs(props) do
 		local ok, err = pcall(function()
 			inst[p] = v
 		end)
-
 		if not ok then
 			pushConsole("Erro", ("%s.%s: %s"):format(className, tostring(p), tostring(err)), "create")
 		end
@@ -916,7 +903,6 @@ end
 
 local function tween(obj, props, time)
 	local tweenProps = {}
-
 	for prop, value in pairs(props) do
 		if prop == "Text" then
 			obj.Text = value
@@ -924,17 +910,14 @@ local function tween(obj, props, time)
 			tweenProps[prop] = value
 		end
 	end
-
 	if next(tweenProps) then
 		local ok, tweenObj = pcall(function()
 			return TweenService:Create(obj, TweenInfo.new(time or UI_TWEEN_TIME, Enum.EasingStyle.Quad), tweenProps)
 		end)
-
 		if ok and tweenObj then
 			local playOk, playErr = pcall(function()
 				tweenObj:Play()
 			end)
-
 			if not playOk then
 				pushConsole("Erro", playErr, "TweenService")
 			end
@@ -952,7 +935,6 @@ local function applyProps(obj, props, animate)
 			local ok, err = pcall(function()
 				obj[p] = v
 			end)
-
 			if not ok then
 				local objName = obj and obj.Name or "nil"
 				pushConsole("Erro", ("%s.%s: %s"):format(objName, tostring(p), tostring(err)), "applyProps")
@@ -966,7 +948,6 @@ local function bindTheme(inst, prop, themeKey)
 	local ok, err = pcall(function()
 		inst[prop] = Theme[themeKey]
 	end)
-
 	if not ok then
 		pushConsole("Erro", ("%s.%s: %s"):format(inst.Name, tostring(prop), tostring(err)), "bindTheme")
 	end
@@ -1000,8 +981,6 @@ end
 local function applyTheme(themeName, animate)
 	AppState.themeName = themeName
 	Theme = Themes[themeName]
-
-	-- Atualiza objetos vinculados
 	local alive = {}
 	for _, b in ipairs(themeBindings) do
 		if b.inst and b.inst.Parent then
@@ -1010,8 +989,6 @@ local function applyTheme(themeName, animate)
 		end
 	end
 	themeBindings = alive
-
-	-- Refreshers globais e da view
 	for _, refresh in ipairs(globalThemeRefreshers) do
 		safeCall("Theme.Global", refresh, animate)
 	end
@@ -1036,11 +1013,9 @@ local function formatDuration(seconds)
 	local hours = math.floor(seconds / 3600)
 	local minutes = math.floor((seconds % 3600) / 60)
 	local secs = seconds % 60
-
 	if hours > 0 then
 		return string.format("%02d:%02d:%02d", hours, minutes, secs)
 	end
-
 	return string.format("%02d:%02d", minutes, secs)
 end
 
@@ -1048,29 +1023,24 @@ local function getPingMs()
 	local ok, ping = pcall(function()
 		return LocalPlayer:GetNetworkPing()
 	end)
-
 	if ok and type(ping) == "number" then
 		return math.floor((ping * 1000) + 0.5)
 	end
-
 	return nil
 end
 
 local function shortText(value, maxLen)
 	value = tostring(value or "")
 	maxLen = maxLen or 14
-
 	if #value <= maxLen then
 		return value
 	end
-
 	return string.sub(value, 1, maxLen - 3) .. "..."
 end
 
 -- ============================================================
 -- 7. GUI PRINCIPAL (RAIZ)
 -- ============================================================
--- Remove GUI antiga se existir
 local oldGui = PlayerGui:FindFirstChild("Panel92u6UI")
 if oldGui then oldGui:Destroy() end
 
@@ -1086,7 +1056,6 @@ local function setInterfaceEnabled(enabled)
 	ScreenGui.Enabled = enabled
 end
 
--- Painel principal
 local Panel = create("Frame", {
 	Name = "Panel",
 	AnchorPoint = Vector2.new(0.5, 0.5),
@@ -1105,7 +1074,6 @@ local PanelScale = create("UIScale", { Scale = 1, Parent = Panel })
 local panelStroke = stroke(Panel, Theme.Line, 1)
 bindTheme(panelStroke, "Color", "Line")
 
--- Funções de centralização e escala
 local function getViewportSize()
 	local cam = Workspace.CurrentCamera
 	if cam and cam.ViewportSize.X > 0 and cam.ViewportSize.Y > 0 then
@@ -1318,7 +1286,7 @@ local function showLoadingNotification(onComplete)
 end
 
 -- ============================================================
--- 9. TELA DE LOGIN (com botão Discord)
+-- 9. TELA DE LOGIN (com botão Discord) - mantida igual
 -- ============================================================
 local LoginFrame = create("Frame", {
 	Name = "LoginFrame",
@@ -1449,7 +1417,6 @@ local showDiscordManualLink
 local discordHovered = false
 local discordCopied = false
 
--- Função que atualiza a aparência do botão (sem animar o Text)
 local function refreshDiscordButton(animate)
 	if discordCopied then
 		DiscordBtn.Text = "✓"
@@ -1466,10 +1433,8 @@ local function refreshDiscordButton(animate)
 		DiscordBtn.TextColor3 = Theme.TextMid
 		discordStroke.Transparency = 1
 	end
-
 	DiscordBtn.BackgroundColor3 = (discordCopied or discordHovered) and Theme.BgRow or Theme.BgPanel
 	DiscordBtn.BackgroundTransparency = (discordCopied or discordHovered) and 0.7 or 1
-
 	if CONFIG.Login.DiscordIcon ~= "" then
 		if discordCopied then
 			discordIconImage.Visible = false
@@ -1488,7 +1453,6 @@ end
 addGlobalThemeRefresher(function(animate) refreshDiscordButton(animate) end)
 refreshDiscordButton(false)
 
--- Eventos do botão
 DiscordBtn.MouseEnter:Connect(function()
 	discordHovered = true
 	refreshDiscordButton(true)
@@ -1709,7 +1673,6 @@ local function hideDiscordModal(resetStatus)
 	discordCopied = false
 	modalCopyButton.Text = "Copiar"
 	refreshDiscordButton(false)
-
 	if resetStatus then
 		setLoginStatus("digite o token para liberar o painel", false)
 	end
@@ -1718,12 +1681,8 @@ end
 local function scheduleDiscordModalHide()
 	discordManualToken += 1
 	local token = discordManualToken
-
 	task.delay(4, function()
-		if token ~= discordManualToken then
-			return
-		end
-
+		if token ~= discordManualToken then return end
 		discordModal.Visible = false
 		discordCopied = false
 		modalCopyButton.Text = "Copiar"
@@ -1735,15 +1694,12 @@ end
 local function tryCopyDiscordModalLink()
 	local copied = false
 	local clipboardFn = setclipboard or toclipboard
-
 	if type(clipboardFn) == "function" then
 		copied = pcall(function()
 			clipboardFn(CONFIG.Login.DiscordInvite)
 		end)
 	end
-
 	focusDiscordModalLink()
-
 	if copied then
 		discordModalStatus.Text = "copiado"
 		modalCopyButton.Text = "Copiado"
@@ -1753,7 +1709,6 @@ local function tryCopyDiscordModalLink()
 		modalCopyButton.Text = "Ctrl+C"
 		setLoginStatus("link selecionado para copiar", false)
 	end
-
 	scheduleDiscordModalHide()
 	return copied
 end
@@ -1766,7 +1721,6 @@ function showDiscordManualLink()
 	discordModal.Visible = true
 	refreshDiscordButton(false)
 	setLoginStatus("link selecionado para copiar", false)
-
 	task.defer(focusDiscordModalLink)
 	scheduleDiscordModalHide()
 end
@@ -1832,16 +1786,13 @@ end
 local function credentialIsValid(username, token)
 	username = trimCredentialText(username)
 	token = trimCredentialText(token)
-
 	for _, credential in ipairs(CONFIG.Login.Credentials or {}) do
 		local validUsername = trimCredentialText(credential.Username)
 		local validToken = trimCredentialText(credential.Token)
-
 		if validUsername ~= "" and validToken ~= "" and username == validUsername and token == validToken then
 			return true
 		end
 	end
-
 	return false
 end
 
@@ -1889,7 +1840,6 @@ local titlebarLine = create("Frame", {
 })
 bindTheme(titlebarLine, "BackgroundColor3", "Line")
 
--- Área de arraste
 local DragHandle = create("TextButton", {
 	Name = "DragHandle",
 	Size = UDim2.new(1, -78, 1, 0),
@@ -1901,7 +1851,6 @@ local DragHandle = create("TextButton", {
 	Parent = Titlebar,
 })
 
--- Marca do painel
 local BrandMark = create("Frame", {
 	Size = UDim2.fromOffset(20, 20),
 	Position = UDim2.fromOffset(14, 11),
@@ -1962,7 +1911,6 @@ local subLabel = create("TextLabel", {
 })
 bindTheme(subLabel, "TextColor3", "TextLow")
 
--- Botão Fechar
 local CloseBtn = create("TextButton", {
 	Name = "CloseBtn",
 	Size = UDim2.fromOffset(26, 26),
@@ -1989,7 +1937,6 @@ CloseBtn.MouseEnter:Connect(function() closeHovered = true; refreshCloseButton(t
 CloseBtn.MouseLeave:Connect(function() closeHovered = false; refreshCloseButton(true) end)
 CloseBtn.MouseButton1Click:Connect(function() setInterfaceEnabled(false) end)
 
--- Botão Configurações (abre a view Settings)
 local SettingsBtn = create("TextButton", {
 	Name = "SettingsBtn",
 	Size = UDim2.fromOffset(26, 26),
@@ -2017,7 +1964,6 @@ local Body = create("Frame", {
 	Parent = Panel,
 })
 
--- Sidebar
 local Sidebar = create("Frame", {
 	Name = "Sidebar",
 	Size = UDim2.new(0, SIDEBAR_WIDTH, 1, 0),
@@ -2036,7 +1982,6 @@ local sidebarLine = create("Frame", {
 })
 bindTheme(sidebarLine, "BackgroundColor3", "Line")
 
--- Lista de navegação
 local NavList = create("Frame", {
 	Name = "NavList",
 	Size = UDim2.new(1, -20, 0, 160),
@@ -2046,7 +1991,6 @@ local NavList = create("Frame", {
 })
 create("UIListLayout", { Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder, Parent = NavList })
 
--- Rodapé com perfil
 local ProfileFooter = create("Frame", {
 	Name = "ProfileFooter",
 	Size = UDim2.new(1, -20, 0, 52),
@@ -2119,7 +2063,6 @@ local tagLabel = create("TextLabel", {
 })
 bindTheme(tagLabel, "TextColor3", "TextLow")
 
--- Content (área principal)
 local Content = create("Frame", {
 	Name = "Content",
 	Size = UDim2.new(1, -SIDEBAR_WIDTH, 1, 0),
@@ -2128,7 +2071,6 @@ local Content = create("Frame", {
 	Parent = Body,
 })
 
--- Cabeçalho do conteúdo
 local ContentHeader = create("Frame", {
 	Name = "ContentHeader",
 	Size = UDim2.new(1, 0, 0, 50),
@@ -2170,7 +2112,6 @@ local ContentDesc = create("TextLabel", {
 })
 bindTheme(ContentDesc, "TextColor3", "TextMid")
 
--- Scrollable content
 local ContentScroll = create("ScrollingFrame", {
 	Name = "ContentScroll",
 	Size = UDim2.new(1, 0, 1, -50),
@@ -2310,10 +2251,12 @@ local function createNavItem(name, order, displayName)
 	return btn
 end
 
+-- Criando os botões da sidebar (incluindo o novo "Moviment")
 local MainHubBtn = createNavItem("MainHub", 1, "Main")
 local VisualsBtn = createNavItem("Visuals", 2)
 local CombatBtn = createNavItem("Combat", 3)
-local ConsoleBtn = createNavItem("Console", 4)
+local MovimentBtn = createNavItem("Moviment", 4, "Moviment")
+local ConsoleBtn = createNavItem("Console", 5)
 
 -- ============================================================
 -- 13. COMPONENTES REUTILIZÁVEIS PARA AS VIEWS
@@ -2360,12 +2303,12 @@ local featureActions = {
 	end,
 	highlight = function(on) Cheat.setHighlight(on) end,
 	teamCheckAimbot = function(on) Cheat.setTeamCheckAimbot(on) end,
+	spin = function(on) Cheat.setSpin(on) end,
 }
 
 local function setFeatureToggle(id, enabled)
 	if not id then return end
 	AppState.toggles[id] = enabled == true
-
 	local action = featureActions[id]
 	if action then
 		safeCall("Toggle." .. tostring(id), action, AppState.toggles[id])
@@ -2392,7 +2335,6 @@ local function createRow(opts)
 	row.MouseEnter:Connect(function() hovered = true; paintRow(row, hovered, true) end)
 	row.MouseLeave:Connect(function() hovered = false; paintRow(row, hovered, true) end)
 
-	-- Títulos
 	local titleLabel = create("TextLabel", {
 		Size = UDim2.new(1, -156, 0, 14),
 		Position = UDim2.fromOffset(14, 8),
@@ -2419,7 +2361,6 @@ local function createRow(opts)
 	})
 	bindTheme(subLabel, "TextColor3", "TextMid")
 
-	-- Tipos de controle
 	if opts.kind == "toggle" then
 		if opts.id and AppState.toggles[opts.id] == nil then
 			AppState.toggles[opts.id] = opts.default == true
@@ -2794,10 +2735,7 @@ end
 
 function rerenderActiveView(animate)
 	local meta = ViewMeta and ViewMeta[AppState.activeView]
-	if not meta then
-		return
-	end
-
+	if not meta then return end
 	noticeToken += 1
 	ContentTitle.Text = meta.title
 	ContentDesc.Text = meta.desc
@@ -2807,7 +2745,7 @@ function rerenderActiveView(animate)
 end
 
 -- ============================================================
--- 14. VIEWS (MAINHUB, VISUALS, COMBAT, SETTINGS)
+-- 14. VIEWS (MAINHUB, VISUALS, COMBAT, MOVIMENT, CONSOLE, SETTINGS)
 -- ============================================================
 ViewMeta = {
 	MainHub = {
@@ -2838,7 +2776,6 @@ ViewMeta = {
 			end))
 
 			safeCall("Main.UpdateStats", updateMainStats)
-
 		end,
 	},
 	Visuals = {
@@ -2927,16 +2864,29 @@ ViewMeta = {
 			})
 		end,
 	},
+	Moviment = {
+		title = "Moviment",
+		desc = "",
+		render = function()
+			sectionLabel("Anti-Aim", 1)
+			createRow({
+				id = "spin",
+				order = 2,
+				title = "Spin",
+				sub = "gira seu personagem continuamente",
+				kind = "toggle",
+				default = false,
+				onToggle = function(on) Cheat.setSpin(on) end,
+			})
+		end,
+	},
 	Console = {
 		title = "Console",
 		desc = "",
 		render = function()
 			local refreshQueued = false
 			InternalConsole.refresh = function()
-				if refreshQueued or AppState.activeView ~= "Console" then
-					return
-				end
-
+				if refreshQueued or AppState.activeView ~= "Console" then return end
 				refreshQueued = true
 				task.delay(0.2, function()
 					refreshQueued = false
@@ -3187,6 +3137,7 @@ local Views = {}
 Views.MainHub = function() ViewMeta.MainHub.render() end
 Views.Visuals = function() ViewMeta.Visuals.render() end
 Views.Combat = function() ViewMeta.Combat.render() end
+Views.Moviment = function() ViewMeta.Moviment.render() end
 Views.Console = function() ViewMeta.Console.render() end
 Views.Settings = function() ViewMeta.Settings.render() end
 
@@ -3206,6 +3157,7 @@ end
 MainHubBtn.MouseButton1Click:Connect(function() safeCall("Nav.Main", openView, "MainHub") end)
 VisualsBtn.MouseButton1Click:Connect(function() safeCall("Nav.Visuals", openView, "Visuals") end)
 CombatBtn.MouseButton1Click:Connect(function() safeCall("Nav.Combat", openView, "Combat") end)
+MovimentBtn.MouseButton1Click:Connect(function() safeCall("Nav.Moviment", openView, "Moviment") end)
 ConsoleBtn.MouseButton1Click:Connect(function() safeCall("Nav.Console", openView, "Console") end)
 SettingsBtn.MouseButton1Click:Connect(function() safeCall("Nav.Settings", openView, "Settings") end)
 
@@ -3266,7 +3218,7 @@ UserInputService.InputBegan:Connect(function(input, gp)
 		for id, keyCode in pairs(AppState.keybinds) do
 			if keyCode == input.KeyCode and keyCode ~= Enum.KeyCode.Unknown then
 				setFeatureToggle(id, not (AppState.toggles[id] == true))
-				if ScreenGui.Enabled and (AppState.activeView == "Visuals" or AppState.activeView == "Combat") then
+				if ScreenGui.Enabled and (AppState.activeView == "Visuals" or AppState.activeView == "Combat" or AppState.activeView == "Moviment") then
 					rerenderActiveView(false)
 				end
 				return
@@ -3337,7 +3289,6 @@ Workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
 end)
 safeCall("Viewport.Bind", bindViewportWatcher)
 
--- Abre a view inicial, aplica tema e mostra loading
 safeCall("Init.OpenView", openView, "MainHub")
 safeCall("Init.Theme", applyTheme, AppState.themeName, false)
 safeCall("Init.Loading", showLoadingNotification, showLoginCentered)
